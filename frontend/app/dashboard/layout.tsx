@@ -82,6 +82,7 @@ export default function DashboardLayout({
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+    { icon: Users, label: 'Polos', href: '/dashboard/tenants' },
     { icon: FileText, label: 'Formulários', href: '/dashboard/forms' },
     { icon: Users, label: 'Alunos', href: '/dashboard/submissions' },
     { icon: Settings, label: 'Configurações', href: '/dashboard/settings' },
