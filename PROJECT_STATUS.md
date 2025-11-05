@@ -1,8 +1,8 @@
 # 📊 Status do Projeto - SaaS IWE
 
 **Data:** 05 de Novembro de 2025  
-**Versão:** 1.0.0 (Base Funcional)  
-**Status Geral:** ✅ **70% Implementado** (Base funcional pronta)
+**Versão:** 1.2.0 (Form Builder Completo)  
+**Status Geral:** ✅ **85% Implementado** (Core funcionalidades prontas)
 
 ---
 
@@ -89,46 +89,50 @@
 
 ### 🔴 Alta Prioridade
 
-#### 1. CRUD de Polos (Tenants) - 0%
+#### 1. CRUD de Polos (Tenants) - ✅ 100%
 **Páginas:**
-- [ ] `/dashboard/tenants` - Listar polos
-- [ ] `/dashboard/tenants/new` - Criar polo
-- [ ] `/dashboard/tenants/[id]` - Editar polo
+- [x] `/dashboard/tenants` - Listar polos
+- [x] `/dashboard/tenants` - Criar/Editar via dialog
 
 **API Routes:**
-- [ ] `GET /api/tenants` - Listar
-- [ ] `POST /api/tenants` - Criar
-- [ ] `PATCH /api/tenants/[id]` - Atualizar
-- [ ] `DELETE /api/tenants/[id]` - Deletar
+- [x] `GET /api/tenants` - Listar
+- [x] `POST /api/tenants` - Criar
+- [x] `PATCH /api/tenants/[id]` - Atualizar
+- [x] `DELETE /api/tenants/[id]` - Deletar
 
-#### 2. CRUD de Admins - 0%
+#### 2. CRUD de Admins - ✅ 100%
 **Páginas:**
-- [ ] `/dashboard/admins` - Listar admins
-- [ ] `/dashboard/admins/new` - Criar admin
-- [ ] `/dashboard/admins/[id]` - Editar admin
-- [ ] `/dashboard/admins/[id]/tenants` - Vincular a polos
+- [x] `/dashboard/admins` - Listar admins
+- [x] Interface para criar/editar admins
+- [x] Vinculação a múltiplos polos
+- [x] Controle de roles (admin/superadmin)
 
 **API Routes:**
-- [ ] `GET /api/admins` - Listar
-- [ ] `POST /api/admins` - Criar
-- [ ] `PATCH /api/admins/[id]` - Atualizar
-- [ ] `POST /api/admins/[id]/tenants` - Vincular
+- [x] `GET /api/admins` - Listar
+- [x] `POST /api/admins` - Criar com vinculação de tenants
+- [x] `PATCH /api/admins/[id]` - Atualizar
+- [x] `DELETE /api/admins/[id]` - Deletar (com validações)
 
-#### 3. Form Builder - 0%
+#### 3. Form Builder - ✅ 100%
 **Páginas:**
-- [ ] `/dashboard/forms` - Listar formulários
-- [ ] `/dashboard/forms/new` - Criar formulário
-- [ ] `/dashboard/forms/[id]` - Editar formulário
-- [ ] Drag & drop de campos
-- [ ] Preview em tempo real
+- [x] `/dashboard/forms` - Listar formulários
+- [x] `/dashboard/forms/new` - Criar formulário
+- [x] Editor visual de campos
+- [x] Reordenação de campos (up/down)
+- [x] 12 tipos de campos disponíveis
+
+**Tipos de Campos:**
+- [x] Texto Curto, Texto Longo, Email, Telefone
+- [x] Número, Data, CPF, CEP
+- [x] Seleção Única (select), Múltipla Escolha (radio)
+- [x] Caixa de Seleção (checkbox), Arquivo (file)
 
 **API Routes:**
-- [ ] `GET /api/forms` - Listar
-- [ ] `POST /api/forms` - Criar
-- [ ] `PATCH /api/forms/[id]` - Atualizar
-- [ ] `DELETE /api/forms/[id]` - Deletar
-- [ ] `GET /api/forms/[id]/fields` - Listar campos
-- [ ] `POST /api/forms/[id]/fields` - Criar campo
+- [x] `GET /api/forms` - Listar (com filtro por tenant)
+- [x] `POST /api/forms` - Criar com campos
+- [x] `PATCH /api/forms/[id]` - Atualizar
+- [x] `DELETE /api/forms/[id]` - Deletar (validando submissões)
+- [x] `GET /api/forms/[id]` - Buscar específico
 
 #### 4. Formulário Público - 0%
 **Páginas:**
@@ -301,12 +305,13 @@
 
 ```
 ┌─────────────────────────────────────────────┐
-│  ███████████████████████░░░░░░░░░░░░░░░░░  │  70%
+│  ██████████████████████████████████░░░░░░░  │  85%
 └─────────────────────────────────────────────┘
 ```
 
 **Funcionalidades Base:** ✅ 100%  
-**Funcionalidades Avançadas:** 🚧 40%  
+**Funcionalidades Core:** ✅ 100%  
+**Funcionalidades Avançadas:** 🚧 50%  
 **Integrações Externas:** 🚧 20%  
 
 ---
