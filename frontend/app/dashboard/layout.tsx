@@ -12,7 +12,8 @@ import {
   LogOut,
   Moon,
   Sun,
-  Menu
+  Menu,
+  Shield
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
