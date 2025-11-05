@@ -1,0 +1,236 @@
+Quero que você desenvolva um **SaaS de educação multi-tenant (polos)**, com **formulário público, checkout Mercado Pago, status de pagamento, integração via n8n com Moodle**, e **disparo automático de WhatsApp** (Evolution API).
+O sistema precisa ter **dashboard moderno, 100% responsivo, modo escuro**, e seguir as **cores do Manual da Marca IWE**.
+
+---
+
+## 🎯 Objetivo de Negócio
+
+Fluxo completo:
+
+1. Usuário acessa um **formulário público** (definido pelo admin do polo);
+2. Preenche e é redirecionado ao **checkout do Mercado Pago**;
+3. Após o pagamento, o sistema recebe o **webhook do MP**, marca o status **Pago** e dispara:
+
+   * WhatsApp automático via **Evolution API**;
+   * Webhook de saída para o **n8n**, que cria o usuário no **Moodle** e faz a matrícula;
+4. Admins e superadmin acompanham no **dashboard** (filtrar, editar, excluir, exportar CSV);
+5. Sistema é **multi-tenant (polos)**, com **superadmin / admin / usuário**.
+
+---
+
+## 🧩 Papéis e Permissões
+
+* **Superadmin**: CRUD de polos (tenants), admins, templates, auditoria, métricas gerais.
+* **Admin (polo)**: criar/editar formulários, templates WhatsApp, configurações de integração (MP, Evolution, n8n), visualizar e gerenciar alunos.
+* **Usuário (aluno)**: só preenche o formulário público e faz o pagamento.
+
+---
+
+## 🏗️ Estrutura Multi-tenant
+
+* Entidade **Tenant (Polo)**: `id`, `name`, `slug`, `status`, `created_at`.
+* Todos os registros chave (formulários, submissions, configs, mensagens) têm `tenant_id`.
+* Superadmin enxerga tudo; admin apenas os tenants vinculados.
+
+---
+
+## 🧱 Entidades Principais
+
+* **User**: `id`, `name`, `email`, `phone`, `role` (superadmin/admin), `password_hash`, `is_active`.
+* **Tenant**: conforme acima.
+* **AdminTenant**: relação N:N (um admin pode gerir vários polos).
+* **FormDefinition**: `id`, `tenant_id`, `name`, `slug_public_url`, `redirect_url_after_flow`, `is_active`.
+* **FormField**: `id`, `form_definition_id`, `label`, `name`, `type` (text/email/phone/select/date/file/checkbox), `required`, `options` (JSON), `order`.
+* **Submission**: `id`, `tenant_id`, `form_definition_id`, `data` (JSON), `polo`, `payment_status` (PENDENTE|PAGO), `payment_provider` (mercadopago), `payment_reference`, `payment_external_id`, `created_at`, `updated_at`.
+* **PaymentEvent**: para idempotência de webhooks MP.
+* **WhatsConfig** (por tenant): `api_base_url`, `instance_id`, `token`, `default_sender`, `is_active`.
+* **MessageTemplate** (por tenant): `id`, `key`, `title`, `content` (placeholders `{{nome}}`, `{{curso}}`, `{{polo}}`, etc).
+* **MessageLog**: histórico de disparos WhatsApp.
+* **ScheduleJob**: agendamento de disparos.
+* **OutboundWebhookConfig** (por tenant): `enrollment_webhook_url`, `enrollment_webhook_token`, `timeout_ms`, `retries`.
+* **EnrollmentLog**: `id`, `tenant_id`, `submission_id`, `status` (QUEUED|DONE|FAILED), `request_payload`, `response_payload`, `error`, `created_at`.
+
+---
+
+## 💳 Fluxo de Pagamento (Mercado Pago)
+
+1. Usuário envia formulário → cria `Submission` com status **PENDENTE**.
+2. Cria `Preference` no Mercado Pago (`metadata: { submission_id, tenant_id }`).
+3. Redireciona para checkout do MP.
+4. Webhook do MP (`POST /webhooks/mercadopago`):
+
+   * Verifica assinatura e idempotência.
+   * Se `approved`, marca `Submission.payment_status = PAGO`.
+   * Dispara:
+
+     * Mensagem WhatsApp automática (Evolution API);
+     * Webhook para o n8n com dados do usuário.
+   * Atualiza `PaymentEvent` e `EnrollmentLog`.
+
+---
+
+## 🤖 Integração via n8n (Moodle)
+
+**Fluxo:**
+
+* Após marcar `PAGO`, o sistema envia `POST` para a URL configurada em `enrollment_webhook_url` do tenant, com token `enrollment_webhook_token`.
+
+**Payload exemplo:**
+
+```json
+{
+  "event": "payment.approved",
+  "timestamp": "2025-11-04T23:15:00Z",
+  "tenant": { "id": "polo-mg", "name": "Polo Minas Gerais" },
+  "submission": {
+    "id": "subm_123",
+    "payment_status": "PAGO",
+    "data": {
+      "nome_completo": "Maria Silva",
+      "email": "maria@email.com",
+      "telefone": "55999999999",
+      "curso": "Teologia Básica",
+      "polo": "Minas Gerais"
+    }
+  },
+  "redirect_url_after_flow": "https://site.com.br/obrigado"
+}
+```
+
+**n8n:**
+
+1. Recebe o webhook;
+2. Separa nome em primeiro/sobrenome;
+3. Chama API do Moodle (`core_user_create_users` e `enrol_manual_enrol_users`);
+4. Retorna JSON com status;
+5. O sistema registra o resultado em `EnrollmentLog`.
+
+---
+
+## 💬 Integração WhatsApp (Evolution API)
+
+* Config por tenant: `api_base_url`, `instance_id`, `token`.
+* Ao receber pagamento **PAGO**, dispara mensagem com template configurado.
+* Mensagem usa placeholders dinâmicos:
+  “Olá {{nome_completo}}, seu pagamento foi confirmado! Bem-vindo ao curso {{curso}} no polo {{polo}}.”
+* Admin pode testar, editar e criar templates no painel.
+* Logs de disparos em `MessageLog`.
+
+---
+
+## 🖥️ Dashboard e UI
+
+### Layout
+
+* **Responsivo e moderno**, com **dark mode** por classe `.dark`.
+* **Cores (Manual da Marca IWE)**:
+
+  * Primária: `#141B4D`
+  * Neutra clara: `#DBE2E9`
+  * Acento (alertas e destaques): `#E73C3E`
+* **Tipografia**: Montserrat.
+* **Tokens CSS**:
+
+  ```css
+  :root {
+    --brand-primary: #141B4D;
+    --brand-muted: #DBE2E9;
+    --brand-accent: #E73C3E;
+    --bg: #ffffff;
+    --fg: #0f1222;
+    --chip-paid-bg: #e6ffed;
+    --chip-pending-bg: #fff7e6;
+  }
+  .dark {
+    --bg: #0A0C1A;
+    --fg: #E9ECF5;
+    --brand-muted: #1f2438;
+  }
+  ```
+
+### Telas
+
+1. **Login / Recuperar senha**
+2. **Dashboard principal** (cards: total cadastros, pagos, conversão, por polo)
+3. **Submissions** (alunos)
+
+   * Colunas dinâmicas dos campos do formulário
+   * Filtros (polo, status, período, busca)
+   * Ações: Editar / Excluir / Exportar CSV
+4. **Form Builder**
+
+   * Drag & drop para criar campos (text/email/telefone/select)
+   * Slug público e URL de redirecionamento pós-pagamento
+5. **Configurações do Polo**
+
+   * Aba “Pagamentos” → Mercado Pago
+   * Aba “WhatsApp” → Evolution API
+   * Aba “Integrações” → webhook do n8n
+6. **Templates WhatsApp**
+
+   * CRUD + teste
+7. **Disparos**
+
+   * Selecionar usuários, enviar mensagem manual ou agendar
+8. **Auditoria**
+
+   * Histórico de ações
+9. **Superadmin**
+
+   * Gestão de polos e admins.
+
+---
+
+## ⚙️ API (REST + JWT + Swagger)
+
+Principais rotas:
+
+* `POST /api/v1/auth/login`
+* `GET /api/v1/tenants`
+* `GET /api/v1/forms/{tenantId}`
+* `POST /api/v1/forms`
+* `POST /forms/{tenantSlug}/{formSlug}/submit`
+* `POST /webhooks/mercadopago`
+* `POST /api/v1/whatsapp/send`
+* `POST /api/v1/whatsapp/schedule`
+* `POST /webhooks/out/enrollment` (para o n8n)
+* `GET /api/v1/submissions`
+* `PATCH /api/v1/submissions/{id}`
+
+---
+
+## 🔐 Segurança
+
+* JWT Auth e Row-Level Security (`tenant_id`).
+* Validação e sanitização de campos do formulário.
+* Webhooks assinados e verificados (Mercado Pago + saída n8n).
+* Retry/backoff para falhas em chamadas externas.
+* AuditLog com IP, usuário e ação.
+* Rate limiting em rotas públicas.
+
+---
+
+## 🧠 Stack Sugerida
+
+* **Backend:** Supabase
+* **Frontend:** Next.js + React + Tailwind + shadcn/ui
+* **Documentação API:** Swagger/OpenAPI
+
+---
+
+## ✅ Critérios de Aceite (DoD)
+
+1. Superadmin cria um **Polo** e um **Admin** vinculado.
+2. Admin cria um **formulário público** e define `redirect_url_after_flow`.
+3. Usuário acessa o link, preenche e é redirecionado ao **checkout Mercado Pago**.
+4. Após pagar, webhook marca como **PAGO**.
+5. Dispara WhatsApp automático (Evolution API).
+6. Envia webhook de saída para o **n8n**, que cria o aluno no Moodle.
+7. Dashboard mostra o aluno com status atualizado.
+8. Admin pode editar, excluir, exportar CSV, filtrar por polo/status.
+9. Superadmin visualiza todos os polos.
+10. Layout segue **cores IWE**, **modo escuro funcional**, e **100% responsivo**.
+
+---
+
+Implemente todo o sistema com base nestas especificações, mantendo código limpo, seguro e preparado para escalar.
