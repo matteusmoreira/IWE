@@ -174,15 +174,34 @@ export default function PublicFormPage() {
       const data = await response.json();
 
       if (response.ok) {
+        // Se requer pagamento, criar preferência e redirecionar
+        if (data.requires_payment) {
+          // Criar preferência de pagamento
+          const paymentResponse = await fetch('/api/payments/create-preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              submission_id: data.submission_id,
+            }),
+          });
+
+          const paymentData = await paymentResponse.json();
+
+          if (paymentResponse.ok && paymentData.init_point) {
+            // Redirecionar para checkout do Mercado Pago
+            window.location.href = paymentData.init_point;
+            return;
+          } else {
+            setError('Erro ao processar pagamento. Tente novamente.');
+            setSubmitting(false);
+            return;
+          }
+        }
+
+        // Sucesso sem pagamento
         setSubmitted(true);
 
-        // Se requer pagamento, redirecionar
-        if (data.requires_payment) {
-          // TODO: Implementar redirecionamento para Mercado Pago
-          setTimeout(() => {
-            alert('Redirecionamento para pagamento será implementado');
-          }, 2000);
-        } else if (data.redirect_url) {
+        if (data.redirect_url) {
           // Redirecionar para URL customizada
           setTimeout(() => {
             window.location.href = data.redirect_url;
