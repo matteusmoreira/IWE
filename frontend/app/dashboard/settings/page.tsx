@@ -107,7 +107,14 @@ export default function SettingsPage() {
         const response = await fetch(`/api/settings/whatsapp?tenant_id=${selectedTenant}`);
         const data = await response.json();
         if (response.ok && data.config) {
-          setWhatsappConfig(data.config);
+          // Mapear campos do backend (instance_id/api_base_url/token) para os inputs da UI
+          setWhatsappConfig({
+            id: data.config.id || '',
+            instance_name: data.config.instance_id || '',
+            api_url: data.config.api_base_url || '',
+            api_key: data.config.token || '',
+            is_active: data.config.is_active !== false,
+          });
         } else {
           setWhatsappConfig({
             id: '',

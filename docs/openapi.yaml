@@ -197,6 +197,73 @@ paths:
         '500':
           description: Erro interno ao calcular métricas.
 
+  /api/emails/send:
+    post:
+      summary: Envia e-mail via Resend (Next.js API)
+      description: |
+        Envia e-mails transacionais utilizando Resend. Requer sessão válida de admin do tenant e configuração das variáveis de ambiente (RESEND_API_KEY, RESEND_FROM).
+        Pode usar um template de `message_templates` (via `template_key`) com placeholders `{{variavel}}`.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+                to:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                subject:
+                  type: string
+                html:
+                  type: string
+                template_key:
+                  type: string
+                  description: Chave do template em `message_templates` (ex.: payment_approved_email)
+                variables:
+                  type: object
+                submission_id:
+                  type: string
+                  description: Opcional, para enriquecer variáveis a partir da submissão
+                reply_to:
+                  type: string
+                  description: E-mail de resposta (Reply-To)
+                bcc:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - tenant_id
+                - to
+      responses:
+        '200':
+          description: E-mail enviado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  id:
+                    type: string
+                    nullable: true
+        '401':
+          description: Não autorizado.
+        '403':
+          description: Proibido.
+        '404':
+          description: Template não encontrado.
+        '500':
+          description: Erro interno.
+
   /api/admins:
     get:
       summary: Lista admins com polos vinculados (Next.js API)
@@ -515,8 +582,196 @@ paths:
         '500':
           description: Erro interno.
 
+  /api/whatsapp/send:
+    post:
+      summary: Envia mensagem WhatsApp via Evolution API v2 (Next.js API)
+      description: |
+        Envia mensagens de texto via Evolution API v2 utilizando a configuração ativa em `whatsapp_configs` do tenant.
+        Suporta envio com conteúdo bruto (`message`) ou a partir de um template de `message_templates` (`template_key`) com placeholders no formato `{{variavel}}`.
+        Requer sessão válida e permissão do admin no tenant alvo. Logs são registrados em `message_logs`.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+                to:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: Telefones no formato 11999999999 ou 5511999999999.
+                template_key:
+                  type: string
+                  description: Chave do template em `message_templates` (ex.: payment_approved_whatsapp).
+                message:
+                  type: string
+                  description: Conteúdo de texto quando não usar template.
+                variables:
+                  type: object
+                  description: Mapa de variáveis para substituir nos templates.
+                submission_id:
+                  type: string
+                  description: Opcional, usado apenas para log.
+              required:
+                - tenant_id
+                - to
+      responses:
+        '200':
+          description: Envio processado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: integer
+                    description: Quantidade de envios bem-sucedidos.
+                  failures:
+                    type: integer
+                    description: Quantidade de falhas.
+        '400':
+          description: Requisição inválida (ex.: tenant ausente, conteúdo vazio ou WhatsApp não configurado).
+        '401':
+          description: Não autorizado.
+        '403':
+          description: Proibido.
+        '404':
+          description: Template não encontrado.
+        '500':
+          description: Erro interno.
+
+  /api/messages/schedule:
+    post:
+      summary: Agenda mensagens (WhatsApp ou E-mail) (Next.js API)
+      description: |
+        Cria um job em `schedule_jobs` para envio futuro de mensagens via WhatsApp ou E-mail.
+        Metadados do job armazenam canal, conteúdo bruto ou chave de template, variáveis e destinatários.
+        RLS garante que usuários só possam agendar para seus tenants. Auditoria mínima é registrada em `audit_logs`.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_id:
+                  type: string
+                channel:
+                  type: string
+                  enum: [whatsapp, email]
+                scheduled_for:
+                  type: string
+                  format: date-time
+                recipient_phones:
+                  type: array
+                  items:
+                    type: string
+                  description: Somente para canal `whatsapp`.
+                to:
+                  type: array
+                  items:
+                    type: string
+                  description: Somente para canal `email`.
+                template_key:
+                  type: string
+                message:
+                  type: string
+                subject:
+                  type: string
+                html:
+                  type: string
+                variables:
+                  type: object
+                metadata:
+                  type: object
+              required:
+                - tenant_id
+                - channel
+                - scheduled_for
+      responses:
+        '201':
+          description: Job criado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    $ref: '#/components/schemas/ScheduleJob'
+        '401':
+          description: Não autorizado.
+        '403':
+          description: Proibido.
+        '500':
+          description: Erro ao criar job.
+
+  /api/messages/process-scheduled:
+    post:
+      summary: Processa jobs agendados vencidos (Next.js API)
+      description: |
+        Executa jobs com `status = PENDING` e `scheduled_for <= now`.
+        Para canal `whatsapp`, envia via Evolution API v2 e registra em `message_logs`.
+        Para canal `email`, envia via Resend e registra auditoria em `audit_logs`.
+        Atualiza o status do job para `EXECUTED` ou `FAILED`.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Jobs processados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed:
+                    type: integer
+        '401':
+          description: Não autorizado.
+        '500':
+          description: Erro ao processar agendamentos.
+
 components:
   schemas:
+    ScheduleJob:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        template_id:
+          type: string
+          nullable: true
+        recipient_phones:
+          type: array
+          items:
+            type: string
+        scheduled_for:
+          type: string
+          format: date-time
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, EXECUTED, FAILED]
+        metadata:
+          type: object
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     User:
       type: object
       properties:

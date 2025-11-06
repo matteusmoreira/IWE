@@ -17,10 +17,10 @@ export async function PATCH(
   const body = await request.json();
   const { name, message_template, trigger_event, is_active } = body;
 
-  // Verificar se o template existe e se o admin tem permissão
+  // Verificar se o template existe e se o admin tem permissão (tabela message_templates)
   const { data: existingTemplate, error: fetchError } = await supabase
-    .from('whatsapp_templates')
-    .select('tenant_id, name')
+    .from('message_templates')
+    .select('tenant_id, title')
     .eq('id', id)
     .single();
 
@@ -47,18 +47,23 @@ export async function PATCH(
     }
   }
 
-  // Atualizar template
+  // Atualizar template (tabela message_templates)
   const updateData: any = {};
-  if (name !== undefined) updateData.name = name;
-  if (message_template !== undefined) updateData.message_template = message_template;
-  if (trigger_event !== undefined) updateData.trigger_event = trigger_event;
+  if (name !== undefined) updateData.title = name;
+  if (message_template !== undefined) {
+    updateData.content = message_template;
+    // Atualizar variáveis dinamicamente conforme placeholders
+    const variables = Array.from((message_template as string).matchAll(/\{\{(\w+)\}\}/g)).map(m => m[1]);
+    updateData.variables = variables;
+  }
+  if (trigger_event !== undefined) updateData.key = trigger_event;
   if (is_active !== undefined) updateData.is_active = is_active;
 
-  const { data: template, error } = await supabase
-    .from('whatsapp_templates')
+  const { data: templateRow, error } = await supabase
+    .from('message_templates')
     .update(updateData)
     .eq('id', id)
-    .select()
+    .select('id, tenant_id, key, title, content, is_active, created_at')
     .single();
 
   if (error) {
@@ -71,12 +76,21 @@ export async function PATCH(
     admin_id: user.id,
     tenant_id: existingTemplate.tenant_id,
     action: 'update',
-    resource_type: 'whatsapp_template',
+    resource_type: 'message_template',
     resource_id: id,
-    details: { message: `Template updated: ${existingTemplate.name}` },
+    details: { message: `Template updated: ${existingTemplate.title}` },
   });
 
-  return NextResponse.json({ template });
+  // Responder no formato esperado pela UI
+  return NextResponse.json({ template: {
+    id: templateRow.id,
+    tenant_id: templateRow.tenant_id,
+    name: templateRow.title,
+    message_template: templateRow.content,
+    trigger_event: templateRow.key as 'payment_approved' | 'submission_created' | 'manual',
+    is_active: !!templateRow.is_active,
+    created_at: templateRow.created_at,
+  } });
 }
 
 export async function DELETE(
@@ -93,10 +107,10 @@ export async function DELETE(
 
   const { id } = await context.params;
 
-  // Verificar se o template existe e se o admin tem permissão
+  // Verificar se o template existe e se o admin tem permissão (tabela message_templates)
   const { data: existingTemplate, error: fetchError } = await supabase
-    .from('whatsapp_templates')
-    .select('tenant_id, name')
+    .from('message_templates')
+    .select('tenant_id, title')
     .eq('id', id)
     .single();
 
@@ -115,9 +129,9 @@ export async function DELETE(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Deletar template
+  // Deletar template (tabela message_templates)
   const { error } = await supabase
-    .from('whatsapp_templates')
+    .from('message_templates')
     .delete()
     .eq('id', id);
 
@@ -131,9 +145,9 @@ export async function DELETE(
     admin_id: user.id,
     tenant_id: existingTemplate.tenant_id,
     action: 'delete',
-    resource_type: 'whatsapp_template',
+    resource_type: 'message_template',
     resource_id: id,
-    details: { message: `Template deleted: ${existingTemplate.name}` },
+    details: { message: `Template deleted: ${existingTemplate.title}` },
   });
 
   return NextResponse.json({ success: true });

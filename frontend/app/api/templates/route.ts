@@ -29,10 +29,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Buscar templates
-  const { data: templates, error } = await supabase
-    .from('whatsapp_templates')
-    .select('*')
+  // Buscar templates (tabela message_templates)
+  const { data: mtData, error } = await supabase
+    .from('message_templates')
+    .select('id, tenant_id, key, title, content, is_active, created_at')
     .eq('tenant_id', tenant_id)
     .order('created_at', { ascending: false });
 
@@ -40,6 +40,17 @@ export async function GET(request: NextRequest) {
     console.error('Error fetching templates:', error);
     return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 });
   }
+
+  // Mapear para o formato esperado pela UI de Templates WhatsApp
+  const templates = (mtData || []).map((t) => ({
+    id: t.id,
+    tenant_id: t.tenant_id,
+    name: t.title,
+    message_template: t.content,
+    trigger_event: t.key as 'payment_approved' | 'submission_created' | 'manual',
+    is_active: !!t.is_active,
+    created_at: t.created_at,
+  }));
 
   return NextResponse.json({ templates });
 }
@@ -81,17 +92,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Criar template
-  const { data: template, error } = await supabase
-    .from('whatsapp_templates')
+  // Criar template (tabela message_templates)
+  const variables = Array.from((message_template as string).matchAll(/\{\{(\w+)\}\}/g)).map(m => m[1]);
+  const { data: templateRow, error } = await supabase
+    .from('message_templates')
     .insert({
       tenant_id,
-      name,
-      message_template,
-      trigger_event,
+      key: trigger_event,
+      title: name,
+      content: message_template,
+      variables,
       is_active: is_active !== false,
     })
-    .select()
+    .select('id, tenant_id, key, title, content, is_active, created_at')
     .single();
 
   if (error) {
@@ -104,10 +117,19 @@ export async function POST(request: NextRequest) {
     admin_id: user.id,
     tenant_id,
     action: 'create',
-    resource_type: 'whatsapp_template',
-    resource_id: template.id,
+    resource_type: 'message_template',
+    resource_id: templateRow.id,
     details: { message: `Template created: ${name}` },
   });
 
-  return NextResponse.json({ template });
+  // Responder no formato esperado pela UI
+  return NextResponse.json({ template: {
+    id: templateRow.id,
+    tenant_id: templateRow.tenant_id,
+    name: templateRow.title,
+    message_template: templateRow.content,
+    trigger_event: templateRow.key as 'payment_approved' | 'submission_created' | 'manual',
+    is_active: !!templateRow.is_active,
+    created_at: templateRow.created_at,
+  } });
 }

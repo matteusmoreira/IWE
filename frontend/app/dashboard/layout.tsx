@@ -85,6 +85,8 @@ export default function DashboardLayout({
     // Remover "Formulários" para admins; manter para superadmin
     ...(user?.role === 'superadmin' ? [{ icon: FileText, label: 'Formulários', href: '/dashboard/forms' }] : []),
     { icon: Users, label: 'Alunos', href: '/dashboard/submissions' },
+    // Mensagens (WhatsApp/E-mail)
+    { icon: MessageCircle, label: 'Mensagens', href: '/dashboard/messages' },
     // Ocultar "Configurações" para admins; manter para superadmin
     ...(user?.role === 'superadmin' ? [{ icon: Settings, label: 'Configurações', href: '/dashboard/settings' }] : []),
   ];

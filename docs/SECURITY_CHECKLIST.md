@@ -32,6 +32,14 @@ Este documento consolida práticas recomendadas de segurança para o SaaS IWE.
 - Não logar CEP completo; mascarar em logs, se necessário.
 - Verificar CORS e usar HTTPS.
 
+### Resend (E-mail)
+- `RESEND_API_KEY` configurada apenas no servidor (sem `NEXT_PUBLIC_`).
+- Domínio de envio verificado com SPF e DKIM.
+- Endereço `RESEND_FROM` usa domínio verificado.
+- Logs e auditoria não expõem e-mails completos (mascarar quando necessário) nem tokens.
+- Variáveis de ambiente definidas em produção e desenvolvimento (valores reais apenas nos ambientes, nunca no repositório).
+- Rotas internas (`/api/emails/send`) exigem sessão válida e verificação de admin por tenant.
+
 ## Frontend
 - Validar entradas no cliente e no servidor.
 - Bloquear XSS via sanitização, escaping e CSP adequada.

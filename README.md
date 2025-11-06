@@ -79,6 +79,37 @@ Opções de aplicação:
      - `supabase db dump --schema storage > supabase/schema_storage.sql`
   3) Reinicie o servidor (`npm run dev`) e valide a criação de formulário com campo `cep`.
 
+### 2.4 E-mails transacionais (Resend)
+
+Para habilitar envio de e-mails transacionais, configure as variáveis no `frontend/.env.local` (não commitar valores reais):
+
+```env
+# -- Resend (E-mail) --
+# API Key (APENAS NO SERVIDOR). NÃO exponha no cliente ou logs.
+RESEND_API_KEY=**********
+# Remetente padrão de e-mails (domínio verificado no Resend)
+RESEND_FROM=no-reply@seu-dominio.com.br
+# Opcional: reply-to padrão
+RESEND_REPLY_TO=atendimento@seu-dominio.com.br
+```
+
+Notas:
+- Verifique o domínio no Resend (SPF/DKIM) e use um endereço de remetente do domínio verificado.
+- Nunca exponha `RESEND_API_KEY` no cliente. Utilize apenas em rotas server-side.
+- Logs e auditorias devem mascarar endereços sensíveis; não gravar tokens.
+
+Uso da API interna (Next.js):
+- `POST /api/emails/send` — Envia e-mail via Resend com HTML custom ou usando um template de `message_templates`.
+  - Body:
+    - `tenant_id` (string, obrigatório)
+    - `to` (string | string[], obrigatório)
+    - `subject` (string) e `html` (string), ou `template_key` (string)
+    - `variables` (objeto) — placeholders `{{variavel}}` do template
+    - `submission_id` (string, opcional) — enriquece variáveis com dados da submissão
+    - `reply_to` (string, opcional) e `bcc` (string[], opcional)
+- Autenticação: sessão válida; o usuário deve ser admin do `tenant_id`.
+- Documentação do contrato: `docs/openapi.yaml`.
+
 
 ### 4. Usuário inicial
 
@@ -134,6 +165,7 @@ O script verifica tabelas-chave (`tenants`, `submissions`, `message_templates`, 
 
 - ADR: `docs/ADR-001-unificacao-migracoes.md`
 - OpenAPI: `docs/openapi.yaml`
+- ADR: `docs/ADR-005-email-resend.md`
 - Checklist de Segurança: `docs/SECURITY_CHECKLIST.md`
 - Deploy na Vercel: `docs/DEPLOY-VERCEL.md`
 

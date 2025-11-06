@@ -113,6 +113,21 @@ Notas:
 - Nunca exponha a chave de Service Role no cliente nem em variáveis iniciadas com `NEXT_PUBLIC_`.
 - Em produção, configure essas variáveis no ambiente de deploy (Vercel/Netlify) e mantenha logs com valores mascarados.
 
+### 3.1 E-mails (Resend)
+Para habilitar o envio de e-mails transacionais via Resend (pós-inscrição, confirmação de pagamento), adicione ao `frontend/.env.local`:
+
+```env
+RESEND_API_KEY=**********
+RESEND_FROM=no-reply@seu-dominio.com.br
+RESEND_REPLY_TO=atendimento@seu-dominio.com.br
+```
+
+Passos:
+1. Verifique o domínio de envio no painel do Resend (SPF e DKIM).
+2. Use um endereço de remetente do domínio verificado.
+3. Não exponha a API Key no cliente; uso exclusivo em rotas server-side.
+4. Teste com o endpoint interno `POST /api/emails/send` (documentado em `docs/openapi.yaml`).
+
 ## 🚀 Passo 4: Iniciar o Servidor de Desenvolvimento
 
 ```bash
