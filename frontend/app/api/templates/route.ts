@@ -10,30 +10,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const tenant_id = searchParams.get('tenant_id');
-
-  if (!tenant_id) {
-    return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 });
-  }
-
-  // Verificar permissão
-  const { data: adminData, error: adminError } = await supabase
-    .from('admins')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .eq('tenant_id', tenant_id)
+  // Permissões: qualquer usuário autenticado com papel admin/superadmin pode listar templates globais
+  const { data: roleRow } = await supabase
+    .from('users')
+    .select('role')
+    .eq('auth_user_id', user.id)
     .single();
-
-  if (adminError || !adminData) {
+  const role = roleRow?.role;
+  if (!role || (role !== 'admin' && role !== 'superadmin')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Buscar templates (tabela message_templates)
+  // Buscar templates globais (tenant_id IS NULL)
   const { data: mtData, error } = await supabase
     .from('message_templates')
-    .select('id, tenant_id, key, title, content, is_active, created_at')
-    .eq('tenant_id', tenant_id)
+    .select('id, tenant_id, key, title, content, variables, is_active, created_at')
+    .is('tenant_id', null)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -41,13 +33,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 });
   }
 
-  // Mapear para o formato esperado pela UI de Templates WhatsApp
+  // Mapear para formato neutro consumido por múltiplas UIs
   const templates = (mtData || []).map((t) => ({
     id: t.id,
     tenant_id: t.tenant_id,
     name: t.title,
     message_template: t.content,
-    trigger_event: t.key as 'payment_approved' | 'submission_created' | 'manual',
+    trigger_event: t.key,
+    variables: t.variables ?? [],
     is_active: !!t.is_active,
     created_at: t.created_at,
   }));
@@ -65,46 +58,62 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { tenant_id, name, message_template, trigger_event, is_active } = body;
+  // Suportar ambas convenções: name/title e message_template/content
+  const name = body.name ?? body.title;
+  const message_template = body.message_template ?? body.content;
+  const trigger_event = body.trigger_event ?? body.key;
+  const is_active = body.is_active;
 
-  if (!tenant_id || !name || !message_template || !trigger_event) {
+  if (!name || !message_template || !trigger_event) {
     return NextResponse.json(
-      { error: 'tenant_id, name, message_template, and trigger_event are required' },
+      { error: 'name/title, message_template/content e trigger_event são obrigatórios' },
       { status: 400 }
     );
   }
 
-  // Validar trigger_event
-  const validTriggers = ['payment_approved', 'submission_created', 'manual'];
+  // Validar trigger_event (expandido para suportar e-mail pós-pagamento e templates comuns)
+  const validTriggers = ['payment_approved', 'payment_approved_email', 'payment_reminder', 'welcome', 'submission_created', 'manual'];
   if (!validTriggers.includes(trigger_event)) {
     return NextResponse.json({ error: 'Invalid trigger_event' }, { status: 400 });
   }
 
-  // Verificar permissão
-  const { data: adminData, error: adminError } = await supabase
-    .from('admins')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .eq('tenant_id', tenant_id)
+  // Verificar permissão: superadmin tem acesso global; admin precisa ser do tenant
+  const { data: roleRowPost } = await supabase
+    .from('users')
+    .select('role')
+    .eq('auth_user_id', user.id)
     .single();
 
-  if (adminError || !adminData) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Templates globais: apenas superadmin pode criar/editar/deletar
+  const isSuperAdminPost = roleRowPost?.role === 'superadmin';
+  if (!isSuperAdminPost) {
+    return NextResponse.json({ error: 'Apenas superadmin pode criar templates globais' }, { status: 403 });
   }
 
   // Criar template (tabela message_templates)
   const variables = Array.from((message_template as string).matchAll(/\{\{(\w+)\}\}/g)).map(m => m[1]);
+
+  // Evitar duplicidade de chave global
+  const { data: existingByKey } = await supabase
+    .from('message_templates')
+    .select('id')
+    .is('tenant_id', null)
+    .eq('key', trigger_event)
+    .maybeSingle();
+  if (existingByKey) {
+    return NextResponse.json({ error: 'Já existe um template global com essa chave. Edite o existente ou escolha outra chave.' }, { status: 409 });
+  }
   const { data: templateRow, error } = await supabase
     .from('message_templates')
     .insert({
-      tenant_id,
+      tenant_id: null,
       key: trigger_event,
       title: name,
       content: message_template,
       variables,
       is_active: is_active !== false,
     })
-    .select('id, tenant_id, key, title, content, is_active, created_at')
+    .select('id, tenant_id, key, title, content, variables, is_active, created_at')
     .single();
 
   if (error) {
@@ -114,12 +123,12 @@ export async function POST(request: NextRequest) {
 
   // Audit log
   await supabase.from('audit_logs').insert({
-    admin_id: user.id,
-    tenant_id,
+    user_id: user.id,
+    tenant_id: null,
     action: 'create',
     resource_type: 'message_template',
     resource_id: templateRow.id,
-    details: { message: `Template created: ${name}` },
+    changes: { message: `Template global criado: ${name}` },
   });
 
   // Responder no formato esperado pela UI
@@ -128,7 +137,8 @@ export async function POST(request: NextRequest) {
     tenant_id: templateRow.tenant_id,
     name: templateRow.title,
     message_template: templateRow.content,
-    trigger_event: templateRow.key as 'payment_approved' | 'submission_created' | 'manual',
+    trigger_event: templateRow.key,
+    variables: templateRow.variables ?? [],
     is_active: !!templateRow.is_active,
     created_at: templateRow.created_at,
   } });

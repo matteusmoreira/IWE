@@ -53,11 +53,11 @@ export async function POST(_req: NextRequest) {
             const { data: template } = await supabase
               .from('message_templates')
               .select('*')
-              .eq('tenant_id', job.tenant_id)
+              .is('tenant_id', null)
               .eq('key', templateKey)
               .eq('is_active', true)
               .single();
-            if (!template) throw new Error('Template não encontrado');
+            if (!template) throw new Error('Template global não encontrado');
             templateId = template.id;
             content = parseTemplateVariables(template.content, job.metadata?.variables || {});
           }
@@ -105,7 +105,7 @@ export async function POST(_req: NextRequest) {
             const { data: template } = await supabase
               .from('message_templates')
               .select('*')
-              .eq('tenant_id', job.tenant_id)
+              .is('tenant_id', null)
               .eq('key', key)
               .eq('is_active', true)
               .single();

@@ -79,12 +79,12 @@ export async function POST(request: NextRequest) {
       const { data: template } = await supabase
         .from('message_templates')
         .select('*')
-        .eq('tenant_id', tenant_id)
+        .is('tenant_id', null)
         .eq('key', template_key)
         .eq('is_active', true)
         .single();
       if (!template) {
-        return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 });
+        return NextResponse.json({ error: 'Template global não encontrado' }, { status: 404 });
       }
       templateId = template.id;
       content = parseTemplateVariables(template.content, variables);

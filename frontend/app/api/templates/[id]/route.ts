@@ -15,7 +15,11 @@ export async function PATCH(
 
   const { id } = await context.params;
   const body = await request.json();
-  const { name, message_template, trigger_event, is_active } = body;
+  // Aceitar aliases (name/title, message_template/content)
+  const name = body.name ?? body.title;
+  const message_template = body.message_template ?? body.content;
+  const trigger_event = body.trigger_event ?? body.key;
+  const is_active = body.is_active;
 
   // Verificar se o template existe e se o admin tem permissão (tabela message_templates)
   const { data: existingTemplate, error: fetchError } = await supabase
@@ -28,20 +32,20 @@ export async function PATCH(
     return NextResponse.json({ error: 'Template not found' }, { status: 404 });
   }
 
-  const { data: adminData, error: adminError } = await supabase
-    .from('admins')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .eq('tenant_id', existingTemplate.tenant_id)
+  // Verificar permissão: superadmin tem acesso global; admin precisa ser do tenant
+  const { data: roleRow } = await supabase
+    .from('users')
+    .select('role')
+    .eq('auth_user_id', user.id)
     .single();
-
-  if (adminError || !adminData) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const isSuperAdmin = roleRow?.role === 'superadmin';
+  if (!isSuperAdmin) {
+    return NextResponse.json({ error: 'Apenas superadmin pode editar templates globais' }, { status: 403 });
   }
 
-  // Validar trigger_event se fornecido
+  // Validar trigger_event se fornecido (expandido)
   if (trigger_event) {
-    const validTriggers = ['payment_approved', 'submission_created', 'manual'];
+    const validTriggers = ['payment_approved', 'payment_approved_email', 'payment_reminder', 'welcome', 'submission_created', 'manual'];
     if (!validTriggers.includes(trigger_event)) {
       return NextResponse.json({ error: 'Invalid trigger_event' }, { status: 400 });
     }
@@ -63,7 +67,7 @@ export async function PATCH(
     .from('message_templates')
     .update(updateData)
     .eq('id', id)
-    .select('id, tenant_id, key, title, content, is_active, created_at')
+    .select('id, tenant_id, key, title, content, variables, is_active, created_at')
     .single();
 
   if (error) {
@@ -73,12 +77,12 @@ export async function PATCH(
 
   // Audit log
   await supabase.from('audit_logs').insert({
-    admin_id: user.id,
-    tenant_id: existingTemplate.tenant_id,
+    user_id: user.id,
+    tenant_id: null,
     action: 'update',
     resource_type: 'message_template',
     resource_id: id,
-    details: { message: `Template updated: ${existingTemplate.title}` },
+    changes: { message: `Template global atualizado: ${existingTemplate.title}` },
   });
 
   // Responder no formato esperado pela UI
@@ -87,7 +91,8 @@ export async function PATCH(
     tenant_id: templateRow.tenant_id,
     name: templateRow.title,
     message_template: templateRow.content,
-    trigger_event: templateRow.key as 'payment_approved' | 'submission_created' | 'manual',
+    trigger_event: templateRow.key,
+    variables: templateRow.variables ?? [],
     is_active: !!templateRow.is_active,
     created_at: templateRow.created_at,
   } });
@@ -118,15 +123,15 @@ export async function DELETE(
     return NextResponse.json({ error: 'Template not found' }, { status: 404 });
   }
 
-  const { data: adminData, error: adminError } = await supabase
-    .from('admins')
-    .select('tenant_id')
-    .eq('user_id', user.id)
-    .eq('tenant_id', existingTemplate.tenant_id)
+  // Verificar permissão: superadmin tem acesso global; admin precisa ser do tenant
+  const { data: roleRowDel } = await supabase
+    .from('users')
+    .select('role')
+    .eq('auth_user_id', user.id)
     .single();
-
-  if (adminError || !adminData) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const isSuperAdminDel = roleRowDel?.role === 'superadmin';
+  if (!isSuperAdminDel) {
+    return NextResponse.json({ error: 'Apenas superadmin pode excluir templates globais' }, { status: 403 });
   }
 
   // Deletar template (tabela message_templates)
@@ -142,12 +147,12 @@ export async function DELETE(
 
   // Audit log
   await supabase.from('audit_logs').insert({
-    admin_id: user.id,
-    tenant_id: existingTemplate.tenant_id,
+    user_id: user.id,
+    tenant_id: null,
     action: 'delete',
     resource_type: 'message_template',
     resource_id: id,
-    details: { message: `Template deleted: ${existingTemplate.title}` },
+    changes: { message: `Template global excluído: ${existingTemplate.title}` },
   });
 
   return NextResponse.json({ success: true });

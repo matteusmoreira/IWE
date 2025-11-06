@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Garantir que a rota seja sempre dinâmica (sem cache)
+export const dynamic = 'force-dynamic';
+
 // GET /api/submissions - Listar submissões com filtros
 export async function GET(request: NextRequest) {
   try {

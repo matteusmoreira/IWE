@@ -43,16 +43,23 @@ export default function MessagesPage() {
   }, []);
 
   useEffect(() => {
-    if (!tenantId) return;
-    // Carregar templates ativos do tenant
-    fetch(`/api/templates?tenant_id=${tenantId}`)
+    // Carregar templates globais (apenas admin/superadmin)
+    const controller = new AbortController();
+    fetch(`/api/templates`, { signal: controller.signal })
       .then(async (res) => {
         const payload = await res.json();
-        const items: Template[] = payload?.templates || [];
+        const items = (payload?.templates || []).map((t: any) => ({
+          id: t.id,
+          key: t.trigger_event,
+          title: t.name,
+          content: t.message_template,
+          is_active: !!t.is_active,
+        })) as Template[];
         setTemplates(items.filter(t => t.is_active));
       })
       .catch(() => {});
-  }, [tenantId]);
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     // Buscar submissions para seleção rápida por busca
@@ -259,6 +266,9 @@ export default function MessagesPage() {
                 <option key={t.id} value={t.key}>{t.title}</option>
               ))}
             </Select>
+            <div className="mt-2">
+              <a href="/dashboard/templates" className="text-xs text-blue-600 underline">Gerenciar Templates</a>
+            </div>
           </div>
 
           {channel === "email" && (

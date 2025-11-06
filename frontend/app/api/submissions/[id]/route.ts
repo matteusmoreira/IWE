@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+// Evitar qualquer cache para este handler
+export const dynamic = 'force-dynamic';
+
 // GET /api/submissions/[id] - Buscar submissão por ID
 export async function GET(
   request: NextRequest,
@@ -161,7 +164,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
     }
 
-    // Deletar
+    // Deletar (não depender de retorno de linhas, pois RLS pode impedir returning)
     const { error: deleteError } = await supabase
       .from('submissions')
       .delete()

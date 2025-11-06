@@ -66,12 +66,12 @@ export async function POST(request: NextRequest) {
     const { data: template, error: tmplError } = await supabase
       .from('message_templates')
       .select('*')
-      .eq('tenant_id', tenant_id)
+      .is('tenant_id', null)
       .eq('key', template_key)
       .eq('is_active', true)
       .single();
     if (tmplError || !template) {
-      return NextResponse.json({ error: 'Template não encontrado ou inativo' }, { status: 404 });
+      return NextResponse.json({ error: 'Template global não encontrado ou inativo' }, { status: 404 });
     }
     usedTemplateId = template.id;
     // Preparar variáveis: combinar corpo + submissão

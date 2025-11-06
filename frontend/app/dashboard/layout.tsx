@@ -87,6 +87,8 @@ export default function DashboardLayout({
     { icon: Users, label: 'Alunos', href: '/dashboard/submissions' },
     // Mensagens (WhatsApp/E-mail)
     { icon: MessageCircle, label: 'Mensagens', href: '/dashboard/messages' },
+    // Templates (WhatsApp/E-mail)
+    { icon: FileText, label: 'Templates', href: '/dashboard/templates' },
     // Ocultar "Configurações" para admins; manter para superadmin
     ...(user?.role === 'superadmin' ? [{ icon: Settings, label: 'Configurações', href: '/dashboard/settings' }] : []),
   ];

@@ -1,396 +1,385 @@
-'use client';
+"use client";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Loader2, 
-  Save, 
-  Plus, 
-  MessageCircle, 
-  Edit, 
-  Trash2,
-  X
-} from 'lucide-react';
-import { toast } from 'sonner';
-
-interface WhatsAppTemplate {
+type Template = {
   id: string;
   tenant_id: string;
-  name: string;
-  message_template: string;
-  trigger_event: 'payment_approved' | 'submission_created' | 'manual';
+  key: string; // trigger_event/key
+  title: string;
+  content: string;
+  variables: string[];
   is_active: boolean;
-  created_at: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+const PRESET_KEYS = [
+  { value: "payment_approved", label: "Pagamento aprovado (WhatsApp)" },
+  { value: "payment_approved_email", label: "Pagamento aprovado (E-mail)" },
+  { value: "payment_reminder", label: "Lembrete de pagamento (WhatsApp)" },
+  { value: "welcome", label: "Boas-vindas (WhatsApp)" },
+  { value: "manual", label: "Manual (WhatsApp/E-mail)" },
+];
+
+function extractVariables(content: string): string[] {
+  const vars = new Set<string>();
+  const regex = /{{\s*([a-zA-Z0-9_\.]+)\s*}}/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    vars.add(match[1]);
+  }
+  return Array.from(vars);
 }
 
 export default function TemplatesPage() {
-  const [loading, setLoading] = useState(true);
-  const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
-  const [tenants, setTenants] = useState<any[]>([]);
-  const [selectedTenant, setSelectedTenant] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplate | null>(null);
+  const router = useRouter();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [filterOnlyPayment, setFilterOnlyPayment] = useState<boolean>(true);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    message_template: '',
-    trigger_event: 'payment_approved' as 'payment_approved' | 'submission_created' | 'manual',
-    is_active: true,
-  });
+  // Create form state
+  const [newTitle, setNewTitle] = useState<string>("");
+  const [newKey, setNewKey] = useState<string>(PRESET_KEYS[0].value);
+  const [newActive, setNewActive] = useState<boolean>(true);
+  const [newContent, setNewContent] = useState<string>("Olá {{nome_completo}}! Seu pagamento foi confirmado. Curso: {{curso}}. Polo: {{polo}}. Valor: {{valor}}.");
+
+  // Edit state per template id
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [editState, setEditState] = useState<Record<string, Partial<Template>>>({});
+
+  const filteredTemplates = useMemo(() => {
+    if (!filterOnlyPayment) return templates;
+    return templates.filter((t) => t.key === "payment_approved" || t.key === "payment_approved_email");
+  }, [templates, filterOnlyPayment]);
+
+  const keyAlreadyExists = useMemo(() => {
+    return templates.some((t) => t.key === newKey);
+  }, [templates, newKey]);
 
   useEffect(() => {
-    fetchTenants();
+    setLoading(true);
+    fetch(`/api/templates`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+      })
+      .then((payload) => {
+        const items = payload?.templates || [];
+        const mapped: Template[] = items.map((t: any) => ({
+          id: t.id,
+          tenant_id: t.tenant_id,
+          key: t.trigger_event ?? t.key,
+          title: t.name ?? t.title,
+          content: t.message_template ?? t.content,
+          variables: t.variables ?? [],
+          is_active: !!t.is_active,
+          created_at: t.created_at,
+        }));
+        setTemplates(mapped);
+      })
+      .catch((err) => {
+        console.error("Erro ao carregar templates", err);
+        toast({ title: "Erro", description: "Não foi possível carregar os templates." });
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (selectedTenant) {
-      fetchTemplates();
-    }
-  }, [selectedTenant]);
-
-  const fetchTenants = async () => {
+  async function onCreateTemplate() {
+    const variables = extractVariables(newContent);
     try {
-      const response = await fetch('/api/tenants');
-      const data = await response.json();
-      if (response.ok) {
-        setTenants(data.tenants || []);
-        if (data.tenants?.length > 0) {
-          setSelectedTenant(data.tenants[0].id);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching tenants:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchTemplates = async () => {
-    if (!selectedTenant) return;
-    
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/templates?tenant_id=${selectedTenant}`);
-      const data = await response.json();
-      if (response.ok) {
-        setTemplates(data.templates || []);
-      }
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const method = editingTemplate ? 'PATCH' : 'POST';
-      const url = editingTemplate 
-        ? `/api/templates/${editingTemplate.id}` 
-        : '/api/templates';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
+      const r = await fetch(`/api/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenant_id: selectedTenant,
-          ...formData,
+          name: newTitle || "",
+          trigger_event: newKey,
+          message_template: newContent,
+          is_active: newActive,
+          variables,
         }),
       });
-
-      if (response.ok) {
-        toast.success(editingTemplate ? 'Template atualizado!' : 'Template criado!');
-        fetchTemplates();
-        resetForm();
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Erro ao salvar template');
+      if (!r.ok) {
+        const msg = await r.text();
+        throw new Error(msg);
       }
-    } catch (error) {
-      toast.error('Erro ao salvar template');
-    } finally {
-      setLoading(false);
+      toast({ title: "Template criado", description: "O template foi criado com sucesso." });
+      // reset básico
+      setNewTitle("");
+      setNewKey(PRESET_KEYS[0].value);
+      setNewActive(true);
+      setNewContent("Olá {{nome_completo}}! Seu pagamento foi confirmado. Curso: {{curso}}. Polo: {{polo}}. Valor: {{valor}}.");
+      // reload
+      const refreshed = await fetch(`/api/templates`);
+      const payload = await refreshed.json();
+      const items = payload?.templates || [];
+      setTemplates(items.map((t: any) => ({
+        id: t.id,
+        tenant_id: t.tenant_id,
+        key: t.trigger_event ?? t.key,
+        title: t.name ?? t.title,
+        content: t.message_template ?? t.content,
+        variables: t.variables ?? [],
+        is_active: !!t.is_active,
+        created_at: t.created_at,
+      })));
+    } catch (err: any) {
+      console.error("Erro ao criar template", err);
+      toast({ title: "Erro", description: err?.message || "Falha ao criar template." });
     }
-  };
+  }
 
-  const handleEdit = (template: WhatsAppTemplate) => {
-    setEditingTemplate(template);
-    setFormData({
-      name: template.name,
-      message_template: template.message_template,
-      trigger_event: template.trigger_event,
-      is_active: template.is_active,
-    });
-    setShowForm(true);
-  };
+  function startEdit(t: Template) {
+    setEditing((prev) => ({ ...prev, [t.id]: true }));
+    setEditState((prev) => ({
+      ...prev,
+      [t.id]: {
+        title: t.title,
+        key: t.key,
+        is_active: t.is_active,
+        content: t.content,
+      },
+    }));
+  }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este template?')) return;
+  function cancelEdit(id: string) {
+    setEditing((prev) => ({ ...prev, [id]: false }));
+    setEditState((prev) => ({ ...prev, [id]: {} }));
+  }
 
+  async function saveEdit(t: Template) {
+    const changes = editState[t.id] || {};
+    const content = String(changes.content ?? t.content);
+    const variables = extractVariables(content);
     try {
-      const response = await fetch(`/api/templates/${id}`, {
-        method: 'DELETE',
+      const r = await fetch(`/api/templates/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: changes.title ?? t.title,
+          trigger_event: changes.key ?? t.key,
+          content,
+          is_active: changes.is_active ?? t.is_active,
+          variables,
+        }),
       });
-
-      if (response.ok) {
-        toast.success('Template excluído!');
-        fetchTemplates();
-      } else {
-        toast.error('Erro ao excluir template');
-      }
-    } catch (error) {
-      toast.error('Erro ao excluir template');
+      if (!r.ok) throw new Error(await r.text());
+      toast({ title: "Template atualizado", description: "Alterações salvas com sucesso." });
+      // reload
+      const refreshed = await fetch(`/api/templates`);
+      const payload = await refreshed.json();
+      const items = payload?.templates || [];
+      setTemplates(items.map((t: any) => ({
+        id: t.id,
+        tenant_id: t.tenant_id,
+        key: t.trigger_event ?? t.key,
+        title: t.name ?? t.title,
+        content: t.message_template ?? t.content,
+        variables: t.variables ?? [],
+        is_active: !!t.is_active,
+        created_at: t.created_at,
+      })));
+      cancelEdit(t.id);
+    } catch (err: any) {
+      console.error("Erro ao atualizar template", err);
+      toast({ title: "Erro", description: err?.message || "Falha ao salvar alterações." });
     }
-  };
+  }
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      message_template: '',
-      trigger_event: 'payment_approved',
-      is_active: true,
-    });
-    setEditingTemplate(null);
-    setShowForm(false);
-  };
-
-  const insertVariable = (variable: string) => {
-    const textarea = document.getElementById('message_template') as HTMLTextAreaElement;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = formData.message_template;
-      const newText = text.substring(0, start) + variable + text.substring(end);
-      setFormData({ ...formData, message_template: newText });
-      
-      // Restaurar foco e posição do cursor
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + variable.length, start + variable.length);
-      }, 0);
+  async function deleteTemplate(t: Template) {
+    if (!confirm(`Tem certeza que deseja excluir o template "${t.title}"?`)) return;
+    try {
+      const r = await fetch(`/api/templates/${t.id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(await r.text());
+      toast({ title: "Template excluído", description: "O template foi removido." });
+      // reload
+      const refreshed = await fetch(`/api/templates`);
+      const payload = await refreshed.json();
+      const items = payload?.templates || [];
+      setTemplates(items.map((t: any) => ({
+        id: t.id,
+        tenant_id: t.tenant_id,
+        key: t.trigger_event ?? t.key,
+        title: t.name ?? t.title,
+        content: t.message_template ?? t.content,
+        variables: t.variables ?? [],
+        is_active: !!t.is_active,
+        created_at: t.created_at,
+      })));
+    } catch (err: any) {
+      console.error("Erro ao excluir template", err);
+      toast({ title: "Erro", description: err?.message || "Falha ao excluir template." });
     }
-  };
-
-  const variables = [
-    { label: 'Nome', value: '{{nome}}' },
-    { label: 'Email', value: '{{email}}' },
-    { label: 'Telefone', value: '{{telefone}}' },
-    { label: 'CPF', value: '{{cpf}}' },
-    { label: 'Valor', value: '{{valor}}' },
-    { label: 'Nome do Polo', value: '{{polo}}' },
-    { label: 'Título do Formulário', value: '{{formulario}}' },
-  ];
-
-  const triggerLabels = {
-    payment_approved: 'Pagamento Aprovado',
-    submission_created: 'Inscrição Criada',
-    manual: 'Manual',
-  };
-
-  if (loading && templates.length === 0) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
-      </div>
-    );
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Templates WhatsApp</h1>
-          <p className="text-muted-foreground">Gerencie mensagens automáticas do WhatsApp</p>
-        </div>
-        <Button 
-          onClick={() => setShowForm(true)}
-          className="bg-brand-primary hover:bg-brand-primary/90"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Template
-        </Button>
+        <h1 className="text-2xl font-semibold">Templates</h1>
+        <Link href={`/dashboard/messages`} className="text-sm text-blue-600 underline">
+          Ir para Mensagens
+        </Link>
       </div>
 
-      {/* Seleção de Polo */}
       <Card>
         <CardHeader>
-          <CardTitle>Polo</CardTitle>
-          <CardDescription>Selecione o polo para gerenciar templates</CardDescription>
+          <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <select
-            value={selectedTenant}
-            onChange={(e) => setSelectedTenant(e.target.value)}
-            className="w-full max-w-md px-3 py-2 text-sm border rounded-md"
-          >
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <Switch checked={filterOnlyPayment} onCheckedChange={setFilterOnlyPayment} />
+            <Label>Mostrar apenas templates de pós-pagamento</Label>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Form */}
-      {showForm && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+      <Card>
+        <CardHeader>
+          <CardTitle>Criar novo template</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <CardTitle>{editingTemplate ? 'Editar Template' : 'Novo Template'}</CardTitle>
-              <CardDescription>Configure a mensagem que será enviada automaticamente</CardDescription>
+              <Label>Título</Label>
+              <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Ex.: Pagamento Aprovado" />
             </div>
-            <Button variant="ghost" size="sm" onClick={resetForm}>
-              <X className="h-4 w-4" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome do Template *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ex: Confirmação de Pagamento"
-                  required
-                />
-              </div>
+            <div>
+              <Label>Disparo/Chave</Label>
+              <Select
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value)}
+                className="mt-1"
+              >
+                {PRESET_KEYS.map((k) => (
+                  <option key={k.value} value={k.value}>{k.label}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={newActive} onCheckedChange={setNewActive} />
+              <Label>Ativo</Label>
+            </div>
+            <div className="md:col-span-2">
+              <Label>Conteúdo</Label>
+              <Textarea
+                value={newContent}
+                onChange={(e) => setNewContent(e.target.value)}
+                rows={8}
+                placeholder="Use placeholders como {{nome_completo}}, {{curso}}, {{polo}}, {{valor}}"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Placeholders detectados: {extractVariables(newContent).join(", ") || "nenhum"}
+              </p>
+            </div>
+            <div>
+              <Button onClick={onCreateTemplate} disabled={keyAlreadyExists}>Criar template</Button>
+              {keyAlreadyExists && (
+                <p className="text-xs text-red-600 mt-1">Já existe um template global com essa chave. Edite o existente ou escolha outra chave.</p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-              <div className="space-y-2">
-                <Label htmlFor="trigger_event">Quando Enviar *</Label>
-                <select
-                  id="trigger_event"
-                  value={formData.trigger_event}
-                  onChange={(e) => setFormData({ ...formData, trigger_event: e.target.value as any })}
-                  className="w-full px-3 py-2 text-sm border rounded-md"
-                  required
-                >
-                  <option value="payment_approved">Pagamento Aprovado</option>
-                  <option value="submission_created">Inscrição Criada</option>
-                  <option value="manual">Manual</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="message_template">Mensagem *</Label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {variables.map((variable) => (
-                    <Button
-                      key={variable.value}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => insertVariable(variable.value)}
-                    >
-                      {variable.label}
-                    </Button>
-                  ))}
+      <Card>
+        <CardHeader>
+          <CardTitle>Templates existentes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p>Carregando...</p>
+          ) : filteredTemplates.length === 0 ? (
+            <p>Nenhum template encontrado.</p>
+          ) : (
+            <div className="space-y-4">
+              {filteredTemplates.map((t) => (
+                <div key={t.id} className="border rounded p-4">
+                  {!editing[t.id] ? (
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-start">
+                      <div className="md:col-span-2">
+                        <p className="font-medium">{t.title}</p>
+                        <p className="text-xs text-muted-foreground">Chave: {t.key}</p>
+                        <p className="text-xs text-muted-foreground">Ativo: {t.is_active ? "Sim" : "Não"}</p>
+                        <p className="text-xs text-muted-foreground">Placeholders: {t.variables?.join(", ") || "-"}</p>
+                      </div>
+                      <div className="md:col-span-3">
+                        <pre className="text-sm whitespace-pre-wrap">{t.content}</pre>
+                      </div>
+                      <div className="flex gap-2 mt-2 md:mt-0">
+                        <Button variant="secondary" onClick={() => startEdit(t)}>Editar</Button>
+                        <Button variant="destructive" onClick={() => deleteTemplate(t)}>Excluir</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Título</Label>
+                          <Input
+                            value={String(editState[t.id]?.title ?? t.title)}
+                            onChange={(e) => setEditState((prev) => ({ ...prev, [t.id]: { ...prev[t.id], title: e.target.value } }))}
+                          />
+                        </div>
+                        <div>
+                          <Label>Disparo/Chave</Label>
+                          <Select
+                            value={String(editState[t.id]?.key ?? t.key)}
+                            onChange={(e) => setEditState((prev) => ({ ...prev, [t.id]: { ...prev[t.id], key: e.target.value } }))}
+                            className="mt-1"
+                          >
+                            {PRESET_KEYS.map((k) => (
+                              <option key={k.value} value={k.value}>{k.label}</option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={Boolean(editState[t.id]?.is_active ?? t.is_active)}
+                            onCheckedChange={(v) => setEditState((prev) => ({ ...prev, [t.id]: { ...prev[t.id], is_active: v } }))}
+                          />
+                          <Label>Ativo</Label>
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label>Conteúdo</Label>
+                          <Textarea
+                            value={String(editState[t.id]?.content ?? t.content)}
+                            onChange={(e) => setEditState((prev) => ({ ...prev, [t.id]: { ...prev[t.id], content: e.target.value } }))}
+                            rows={8}
+                          />
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Placeholders detectados: {extractVariables(String(editState[t.id]?.content ?? t.content)).join(", ") || "nenhum"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button onClick={() => saveEdit(t)}>Salvar</Button>
+                        <Button variant="secondary" onClick={() => cancelEdit(t.id)}>Cancelar</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <textarea
-                  id="message_template"
-                  value={formData.message_template}
-                  onChange={(e) => setFormData({ ...formData, message_template: e.target.value })}
-                  placeholder="Olá {{nome}}, seu pagamento de R$ {{valor}} foi aprovado!"
-                  rows={6}
-                  className="w-full px-3 py-2 text-sm border rounded-md"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Use as variáveis acima para personalizar a mensagem
-                </p>
-              </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                />
-                <Label htmlFor="is_active">Ativo</Label>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-brand-primary hover:bg-brand-primary/90"
-                >
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  <Save className="mr-2 h-4 w-4" />
-                  {editingTemplate ? 'Atualizar' : 'Criar'} Template
-                </Button>
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Lista de Templates */}
-      <div className="grid gap-4">
-        {templates.map((template) => (
-          <Card key={template.id}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <MessageCircle className="h-5 w-5 text-brand-primary" />
-                    <CardTitle className="text-lg">{template.name}</CardTitle>
-                    {template.is_active ? (
-                      <Badge className="bg-green-500">Ativo</Badge>
-                    ) : (
-                      <Badge variant="secondary">Inativo</Badge>
-                    )}
-                  </div>
-                  <CardDescription>
-                    Gatilho: {triggerLabels[template.trigger_event]}
-                  </CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleEdit(template)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(template.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-muted p-4 rounded-md">
-                <pre className="text-sm whitespace-pre-wrap">{template.message_template}</pre>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
-        {templates.length === 0 && !showForm && (
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              Nenhum template encontrado. Clique em "Novo Template" para criar um.
-            </CardContent>
-          </Card>
-        )}
+      <div className="text-xs text-muted-foreground">
+        Dica: Os templates de pós-pagamento usados automaticamente são "payment_approved" (WhatsApp) e "payment_approved_email" (E-mail).
       </div>
     </div>
   );

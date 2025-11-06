@@ -68,8 +68,13 @@ export default function SubmissionsPage() {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter);
+      // Evitar retorno em cache e garantir atualização pós-exclusão
+      params.append('_ts', String(Date.now()));
 
-      const response = await fetch(`/api/submissions?${params.toString()}`);
+      const response = await fetch(`/api/submissions?${params.toString()}` , {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       const data = await response.json();
 
       if (response.ok) {
@@ -103,9 +108,14 @@ export default function SubmissionsPage() {
 
       if (response.ok) {
         toast.success('Submissão deletada com sucesso!');
+        // Remover da lista local imediatamente (UX mais responsiva)
+        const deletedId = deletingSubmission.id;
+        setSubmissions((prev) => prev.filter((s) => s.id !== deletedId));
+        setTotal((prev) => Math.max(prev - 1, 0));
         setDeleteDialogOpen(false);
         setDeletingSubmission(null);
-        fetchSubmissions();
+        // Revalidar lista no servidor para consistência
+        await fetchSubmissions();
       } else {
         const data = await response.json();
         toast.error(data.error || 'Erro ao deletar submissão');

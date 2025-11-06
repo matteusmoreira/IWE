@@ -212,7 +212,7 @@ async function sendWhatsAppNotification(submission: any) {
     const { data: template } = await supabase
       .from('message_templates')
       .select('*')
-      .eq('tenant_id', submission.tenant_id)
+      .is('tenant_id', null)
       .eq('key', 'payment_approved')
       .eq('is_active', true)
       .single();
@@ -331,7 +331,7 @@ async function sendEmailNotification(submission: any) {
     const { data: template } = await supabase
       .from('message_templates')
       .select('*')
-      .eq('tenant_id', submission.tenant_id)
+      .is('tenant_id', null)
       .eq('key', 'payment_approved_email')
       .eq('is_active', true)
       .single();
