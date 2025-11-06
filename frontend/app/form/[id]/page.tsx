@@ -97,27 +97,30 @@ export default function PublicFormPage() {
       }
     }
 
-    // Validação de CPF
+    // Validação de CPF (máscara + algoritmo)
     if (field.type === 'cpf') {
-      const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
-      if (!cpfRegex.test(value)) {
-        return 'CPF inválido (use o formato 000.000.000-00)';
+      const sanitized = String(value || '').replace(/\D/g, '');
+      if (sanitized.length !== 11) {
+        return 'CPF inválido (11 dígitos)';
+      }
+      if (!isValidCPF(sanitized)) {
+        return 'CPF inválido';
       }
     }
 
-    // Validação de CEP
+    // Validação de CEP (máscara)
     if (field.type === 'cep') {
-      const cepRegex = /^\d{5}-\d{3}$/;
-      if (!cepRegex.test(value)) {
-        return 'CEP inválido (use o formato 00000-000)';
+      const sanitized = String(value || '').replace(/\D/g, '');
+      if (sanitized.length !== 8) {
+        return 'CEP inválido (8 dígitos)';
       }
     }
 
-    // Validação de telefone
+    // Validação de telefone (máscara fixa com 11 dígitos)
     if (field.type === 'phone') {
-      const phoneRegex = /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/;
-      if (!phoneRegex.test(value)) {
-        return 'Telefone inválido (use o formato (00) 00000-0000)';
+      const sanitized = String(value || '').replace(/\D/g, '');
+      if (sanitized.length !== 11) {
+        return 'Telefone inválido (11 dígitos)';
       }
     }
 
@@ -262,6 +265,81 @@ export default function PublicFormPage() {
     }
   };
 
+  // Helpers de máscara/validação
+  const formatPhone = (digits: string) => {
+    const v = digits.replace(/\D/g, '').slice(0, 11);
+    const part1 = v.slice(0, 2);
+    const part2 = v.slice(2, 7);
+    const part3 = v.slice(7, 11);
+    if (v.length <= 2) return `(${part1}`;
+    if (v.length <= 7) return `(${part1}) ${part2}`;
+    return `(${part1}) ${part2}-${part3}`;
+  };
+
+  const formatCPF = (digits: string) => {
+    const v = digits.replace(/\D/g, '').slice(0, 11);
+    const p1 = v.slice(0, 3);
+    const p2 = v.slice(3, 6);
+    const p3 = v.slice(6, 9);
+    const p4 = v.slice(9, 11);
+    if (v.length <= 3) return p1;
+    if (v.length <= 6) return `${p1}.${p2}`;
+    if (v.length <= 9) return `${p1}.${p2}.${p3}`;
+    return `${p1}.${p2}.${p3}-${p4}`;
+  };
+
+  const isValidCPF = (cpfDigits: string) => {
+    const cpf = cpfDigits.replace(/\D/g, '');
+    if (cpf.length !== 11) return false;
+    // Elimina CPFs inválidos conhecidos
+    if (/^(\d)\1{10}$/.test(cpf)) return false;
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(cpf.charAt(i)) * (10 - i);
+    let rev = 11 - (sum % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    if (rev !== parseInt(cpf.charAt(9))) return false;
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(cpf.charAt(i)) * (11 - i);
+    rev = 11 - (sum % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    if (rev !== parseInt(cpf.charAt(10))) return false;
+    return true;
+  };
+
+  const formatCEP = (digits: string) => {
+    const v = digits.replace(/\D/g, '').slice(0, 8);
+    const p1 = v.slice(0, 5);
+    const p2 = v.slice(5, 8);
+    if (v.length <= 5) return p1;
+    return `${p1}-${p2}`;
+  };
+
+  const fillAddressFromCEP = (cepDigits: string) => {
+    const sanitized = cepDigits.replace(/\D/g, '');
+    if (sanitized.length !== 8) return;
+    fetch(`https://viacep.com.br/ws/${sanitized}/json/`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && !data.erro) {
+          // Mapear campos se existirem no formulário
+          const updates: Record<string, any> = {};
+          if ('logradouro' in (formData || {})) updates['logradouro'] = data.logradouro || '';
+          if ('endereco' in (formData || {})) updates['endereco'] = data.logradouro || '';
+          if ('bairro' in (formData || {})) updates['bairro'] = data.bairro || '';
+          if ('localidade' in (formData || {})) updates['localidade'] = data.localidade || '';
+          if ('cidade' in (formData || {})) updates['cidade'] = data.localidade || '';
+          if ('uf' in (formData || {})) updates['uf'] = data.uf || '';
+          if ('estado' in (formData || {})) updates['estado'] = data.uf || '';
+          if (Object.keys(updates).length > 0) {
+            setFormData({ ...formData, ...updates });
+          }
+        }
+      })
+      .catch(() => {
+        // Silenciar erros de CEP
+      });
+  };
+
   const renderField = (field: FormField) => {
     const fieldError = validationErrors[field.name];
 
@@ -287,7 +365,31 @@ export default function PublicFormPage() {
               type={field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : 'text'}
               placeholder={field.placeholder || ''}
               value={formData[field.name] || ''}
-              onChange={(e) => handleFieldChange(field.name, e.target.value)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (field.type === 'phone') {
+                  const masked = formatPhone(raw);
+                  handleFieldChange(field.name, masked);
+                  return;
+                }
+                if (field.type === 'cpf') {
+                  const masked = formatCPF(raw);
+                  handleFieldChange(field.name, masked);
+                  return;
+                }
+                if (field.type === 'cep') {
+                  const masked = formatCEP(raw);
+                  handleFieldChange(field.name, masked);
+                  // Quando completar 8 dígitos, buscar endereço
+                  const digits = raw.replace(/\D/g, '');
+                  if (digits.length === 8) {
+                    fillAddressFromCEP(digits);
+                  }
+                  return;
+                }
+                // Padrão
+                handleFieldChange(field.name, raw);
+              }}
               className={fieldError ? 'border-red-500' : ''}
               required={field.required}
             />

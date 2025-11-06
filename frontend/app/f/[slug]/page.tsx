@@ -202,15 +202,83 @@ export default function PublicFormBySlugPage() {
     }
   };
 
+  // Função para aplicar máscara de telefone
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 2) {
+      return numbers;
+    }
+    if (numbers.length <= 7) {
+      return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
+    }
+    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
+  };
+
+  // Função para aplicar máscara de CEP
+  const formatCEP = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 5) {
+      return numbers;
+    }
+    return `${numbers.slice(0, 5)}-${numbers.slice(5, 8)}`;
+  };
+
+  // Função para buscar endereço pelo CEP
+  const fetchAddressByCEP = async (cep: string) => {
+    const cleanCEP = cep.replace(/\D/g, '');
+    if (cleanCEP.length !== 8) return;
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`);
+      const data = await response.json();
+      
+      if (!data.erro) {
+        // Preencher campos de endereço se existirem
+        const addressFields = ['logradouro', 'rua', 'endereco', 'address', 'street'];
+        const neighborhoodFields = ['bairro', 'neighborhood', 'distrito'];
+        const cityFields = ['cidade', 'city', 'localidade'];
+        const stateFields = ['estado', 'state', 'uf'];
+
+        addressFields.forEach(fieldName => {
+          const field = form?.form_fields?.find((f: any) => f.name.toLowerCase().includes(fieldName));
+          if (field && data.logradouro) {
+            handleFieldChange(field.name, data.logradouro);
+          }
+        });
+
+        neighborhoodFields.forEach(fieldName => {
+          const field = form?.form_fields?.find((f: any) => f.name.toLowerCase().includes(fieldName));
+          if (field && data.bairro) {
+            handleFieldChange(field.name, data.bairro);
+          }
+        });
+
+        cityFields.forEach(fieldName => {
+          const field = form?.form_fields?.find((f: any) => f.name.toLowerCase().includes(fieldName));
+          if (field && data.localidade) {
+            handleFieldChange(field.name, data.localidade);
+          }
+        });
+
+        stateFields.forEach(fieldName => {
+          const field = form?.form_fields?.find((f: any) => f.name.toLowerCase().includes(fieldName));
+          if (field && data.uf) {
+            handleFieldChange(field.name, data.uf);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error);
+    }
+  };
+
   const renderField = (field: FormField) => {
     const fieldError = validationErrors[field.name];
     const baseInputClass = `w-full px-3 py-2 border rounded-md ${fieldError ? 'border-red-500' : ''}`;
+    
     switch (field.type) {
       case 'text':
       case 'email':
-      case 'phone':
-      case 'cpf':
-      case 'cep':
       case 'number':
         return (
           <div key={field.id} id={`field-${field.name}`} className="space-y-2">
@@ -226,6 +294,59 @@ export default function PublicFormBySlugPage() {
               onChange={(e) => handleFieldChange(field.name, e.target.value)}
               className={fieldError ? 'border-red-500' : ''}
               required={field.required}
+            />
+            {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
+          </div>
+        );
+        
+      case 'phone':
+        return (
+          <div key={field.id} id={`field-${field.name}`} className="space-y-2">
+            <Label htmlFor={field.name}>
+              {field.label}
+              {field.required && <span className="text-red-500 ml-1">*</span>}
+            </Label>
+            <Input
+              id={field.name}
+              type="text"
+              placeholder={field.placeholder || '(00) 00000-0000'}
+              value={formData[field.name] || ''}
+              onChange={(e) => {
+                const formatted = formatPhone(e.target.value);
+                handleFieldChange(field.name, formatted);
+              }}
+              className={fieldError ? 'border-red-500' : ''}
+              required={field.required}
+              maxLength={15}
+            />
+            {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
+          </div>
+        );
+        
+      case 'cep':
+        return (
+          <div key={field.id} id={`field-${field.name}`} className="space-y-2">
+            <Label htmlFor={field.name}>
+              {field.label}
+              {field.required && <span className="text-red-500 ml-1">*</span>}
+            </Label>
+            <Input
+              id={field.name}
+              type="text"
+              placeholder={field.placeholder || '00000-000'}
+              value={formData[field.name] || ''}
+              onChange={(e) => {
+                const formatted = formatCEP(e.target.value);
+                handleFieldChange(field.name, formatted);
+                
+                // Buscar endereço quando CEP estiver completo
+                if (formatted.replace(/\D/g, '').length === 8) {
+                  fetchAddressByCEP(formatted);
+                }
+              }}
+              className={fieldError ? 'border-red-500' : ''}
+              required={field.required}
+              maxLength={9}
             />
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
           </div>

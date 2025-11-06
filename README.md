@@ -19,6 +19,7 @@ Sistema completo de gestão de matrículas com integração Mercado Pago, WhatsA
 ✅ Dashboard moderno com dark mode  
 ✅ Gestão completa de alunos  
 ✅ Auditoria e logs  
+✅ Máscaras e validações: telefone, CPF (algoritmo), CEP com auto-preenchimento de endereço  
 
 ## 🎨 Design System
 
@@ -127,6 +128,7 @@ O script verifica tabelas-chave (`tenants`, `submissions`, `message_templates`, 
 - Nunca exponha tokens/segredos em arquivos públicos. Use variáveis de ambiente.
 - RLS habilitado nas tabelas sensíveis.
 - Políticas de acesso ao Storage limitadas ao bucket `form-submissions` e ao tenant do usuário.
+- Chamadas externas (ViaCEP) são realizadas no cliente, sem segredos; erros são silenciosos e a submissão não depende do auto-preenchimento.
 
 ## 🧭 Documentação complementar
 
@@ -248,6 +250,23 @@ Acceptance Criteria (Given–When–Then) — Login e Dashboard:
 - Gestão de formulários
 - Configurações de integração
 - Gestão de alunos do seu polo
+
+## 🧾 Máscaras e Validações de Formulário (Público)
+
+Implementações atuais na página pública do formulário (`frontend/app/form/[id]/page.tsx`):
+
+- Telefone: máscara fixa `(##) #####-####` e validação de 11 dígitos.
+- CPF: máscara `###.###.###-##` e validação algorítmica dos dígitos verificadores.
+- CEP: máscara `#####-###` e, ao completar 8 dígitos, consulta automática ao ViaCEP para preencher campos de endereço se existirem no formulário (ex.: `logradouro`/`endereco`, `bairro`, `cidade`/`localidade`, `estado`/`uf`).
+
+Acceptance Criteria (Given–When–Then):
+- Given um campo do tipo `phone`, When o usuário digita 11 dígitos, Then o valor é exibido como `(99) 99999-9999` e a validação exige 11 dígitos.
+- Given um campo do tipo `cpf`, When o usuário finaliza 11 dígitos, Then o valor é exibido como `999.999.999-99` e a validação rejeita CPFs com dígitos verificadores incorretos.
+- Given um campo do tipo `cep`, When o usuário insere 8 dígitos válidos, Then o campo é formatado `99999-999` e, se o formulário possuir campos de endereço, eles são preenchidos automaticamente via ViaCEP.
+
+Notas:
+- Nenhum segredo é usado para ViaCEP; se a consulta falhar, a submissão do formulário continua funcionando e o usuário pode preencher manualmente.
+- Os nomes de campos de endereço são detectados por convenção; se não existirem, nada é alterado.
 - Templates WhatsApp
 
 **Usuário (Aluno):**

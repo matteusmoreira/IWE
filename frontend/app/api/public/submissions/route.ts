@@ -23,8 +23,9 @@ export async function POST(request: NextRequest) {
 
     // Nota: tenant_id pode ser opcional quando o formulário possui tenant vinculado
 
-    // Buscar formulário para validar
-    const { data: form, error: formError } = await supabase
+    // Buscar formulário para validar (usar Service Role para evitar bloqueios de RLS)
+    const admin = createAdminClient();
+    const { data: form, error: formError } = await admin
       .from('form_definitions')
       .select(`
         id,
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar e resolver tenant da submissão
-    const admin = createAdminClient();
+    // Reutilizar admin client já criado para validar tenant
     let tenantToUse: { id: string; name: string; status: boolean } | null = null;
 
     if (form.tenant_id) {
@@ -213,18 +214,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Capturar informações da requisição
-    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null;
+    // Extrair primeiro IP válido
+    const forwardedFor = request.headers.get('x-forwarded-for') || '';
+    const firstForwardedIp = forwardedFor.split(',')[0]?.trim();
+    const realIp = request.headers.get('x-real-ip') || '';
+    const ipCandidate = firstForwardedIp || realIp || '';
+    const ipv4Regex = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Regex = /^[0-9a-fA-F:]+$/;
+    const ip = ipCandidate && (ipv4Regex.test(ipCandidate) || ipv6Regex.test(ipCandidate)) ? ipCandidate : null;
     const userAgent = request.headers.get('user-agent') || null;
 
     // Criar submissão
-    const { data: submission, error: submissionError } = await supabase
+    const { data: submission, error: submissionError } = await admin
       .from('submissions')
       .insert({
         tenant_id: tenantToUse!.id,
         polo: tenantToUse!.name,
         form_definition_id: form_id,
         data: formData,
-        payment_status: form.settings?.require_payment ? 'PENDENTE' : 'NAO_APLICAVEL',
+        // Definir status de pagamento apenas quando aplicável (evita enum inválido)
+        ...(form.settings?.require_payment ? { payment_status: 'PENDENTE' } : {}),
         ip_address: ip,
         user_agent: userAgent,
         metadata: {
@@ -238,7 +247,7 @@ export async function POST(request: NextRequest) {
     if (submissionError) {
       console.error('Error creating submission:', submissionError);
       return NextResponse.json(
-        { error: 'Erro ao criar submissão' },
+        { error: 'Erro ao criar submissão', detail: submissionError.message },
         { status: 500 }
       );
     }

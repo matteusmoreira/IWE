@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -31,9 +31,9 @@ interface Tenant {
   slug: string;
 }
 
-export default function EditFormPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const formId = resolvedParams.id;
+export default function EditFormPage() {
+  const params = useParams();
+  const formId = params.id as string;
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -54,7 +54,8 @@ export default function EditFormPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     Promise.all([fetchTenants(), fetchForm()]);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formId]);
 
   const fetchTenants = async () => {
     try {
@@ -78,11 +79,15 @@ export default function EditFormPage({ params }: { params: Promise<{ id: string 
         const form = data.form;
         setFormTitle(form.name);
         setFormDescription(form.description || '');
-        setSelectedTenant(form.tenant_id);
+        setSelectedTenant(form.tenant_id || '');
         setIsActive(form.is_active);
-        setRequiresPayment(form.requires_payment || false);
-        setPaymentAmount(form.payment_amount ? String(form.payment_amount) : '');
-        setFields(form.fields || []);
+        // Ler configurações de pagamento do objeto settings
+        const requirePayment = form.settings?.require_payment ?? false;
+        const paymentAmt = form.settings?.payment_amount ?? null;
+        setRequiresPayment(Boolean(requirePayment));
+        setPaymentAmount(paymentAmt != null ? String(paymentAmt) : '');
+        // Carregar campos corretos (form_fields)
+        setFields(form.form_fields || []);
       } else {
         toast.error('Formulário não encontrado');
         router.push('/dashboard/forms');
@@ -105,6 +110,8 @@ export default function EditFormPage({ params }: { params: Promise<{ id: string 
       placeholder: getDefaultPlaceholder(type),
       required: false,
       options: fieldRequiresOptions(type) ? [] : undefined,
+      order_index: fields.length,
+      is_active: true,
     };
     setFields([...fields, newField]);
     setEditingFieldIndex(fields.length);
@@ -211,8 +218,11 @@ export default function EditFormPage({ params }: { params: Promise<{ id: string 
           // tenant_id opcional: somente enviar se houver seleção
           ...(selectedTenant ? { tenant_id: selectedTenant } : {}),
           is_active: isActive,
-          requires_payment: requiresPayment,
-          payment_amount: requiresPayment ? parseFloat(paymentAmount) : null,
+          // Enviar configurações dentro de settings
+          settings: {
+            ...(requiresPayment ? { require_payment: true } : { require_payment: false }),
+            payment_amount: requiresPayment ? parseFloat(paymentAmount) : null,
+          },
           fields,
         }),
       });
@@ -256,9 +266,24 @@ export default function EditFormPage({ params }: { params: Promise<{ id: string 
             <p className="text-muted-foreground">Modifique campos e configurações</p>
           </div>
         </div>
+        <div className="hidden sm:flex items-center gap-2">
+          <Button
+            type="button"
+            className="bg-brand-primary hover:bg-brand-primary/90"
+            disabled={submitting}
+            onClick={() => {
+              const formEl = document.getElementById('editForm') as HTMLFormElement | null;
+              formEl?.requestSubmit();
+            }}
+          >
+            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Save className="mr-2 h-4 w-4" />
+            Salvar Alterações
+          </Button>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <form id="editForm" onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Form Builder - Left Column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Basic Info */}

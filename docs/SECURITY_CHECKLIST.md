@@ -1,30 +1,46 @@
 # Checklist de Segurança
 
-Última atualização: 2025-11-05
+Este documento consolida práticas recomendadas de segurança para o SaaS IWE.
 
-## Segredos e variáveis de ambiente
-- [ ] Nenhum token/segredo commitado em arquivos versionados.
-- [ ] `.env*` com placeholders apenas. Valores reais ficam fora do repositório.
-- [ ] Documentação (README, OpenAPI) não expõe segredos.
- - [ ] `SUPABASE_SERVICE_ROLE_KEY` usado apenas no servidor (nunca em `NEXT_PUBLIC_*` nem no bundle do cliente).
+## Segredos e Variáveis de Ambiente
+- Nunca commitar segredos no repositório.
+- Usar variáveis de ambiente para tokens/API keys e mascarar valores em logs.
+- Rotacionar segredos periodicamente.
 
 ## Banco de Dados e RLS
-- [ ] RLS habilitado em tabelas sensíveis (`submissions`, `message_templates`, `file_uploads`, etc.).
-- [ ] Políticas limitam acesso por `tenant_id` e papel do usuário.
-- [ ] Função `is_admin_of_tenant` utilizada nas políticas.
+- Habilitar Row Level Security (RLS) em tabelas sensíveis.
+- Validar políticas por papel (superadmin, admin, user) e por tenant.
+- Minimizar dados pessoais retornados por endpoints públicos.
 
 ## Storage
-- [ ] Bucket `form-submissions` com políticas de leitura/gravação restritas.
-- [ ] Vínculo entre `storage.objects` e `public.file_uploads` para validação de tenant.
+- Restringir acesso por bucket e tenant.
+- Validar uploads (tipo, tamanho) e aplicar antivírus quando aplicável.
 
 ## Auditoria
-- [ ] Logs de auditoria habilitados onde aplicável.
-- [ ] Triggers de atualização de `updated_at` existem.
+- Habilitar logs de acesso e ações administrativas.
+- Não logar dados pessoais completos; mascarar quando necessário.
 
-## Integrações
-- [ ] Credenciais de WhatsApp/Mercado Pago/N8N apenas via env vars.
-- [ ] Webhooks validados e assinados quando possível.
+## Integrações e Webhooks
+- Validar payload/assinatura de webhooks (ex.: MercadoPago) e armazenar apenas o mínimo necessário.
+- Usar timeouts e retries exponenciais para chamadas externas.
 
-## Deploy
-- [ ] Revisão de migrações antes de aplicar em produção.
-- [ ] Backups e rollback plan documentados.
+### ViaCEP (consulta de CEP)
+- Sem segredos/tokens — chamadas feitas no cliente.
+- Sanitização: aceitar apenas 8 dígitos; aplicar máscara `#####-###`.
+- Tratar falhas de rede com fallback silencioso (não bloquear submissões).
+- Debounce/disparo somente ao completar 8 dígitos (reduz requisições).
+- Não logar CEP completo; mascarar em logs, se necessário.
+- Verificar CORS e usar HTTPS.
+
+## Frontend
+- Validar entradas no cliente e no servidor.
+- Bloquear XSS via sanitização, escaping e CSP adequada.
+- Evitar exposição de stack traces em produção.
+
+## Build/Deploy
+- Diferenciar configs de dev e prod.
+- Habilitar HTTPS e HSTS em produção.
+
+## Testes e Cobertura
+- Manter testes verdes para caminhos críticos (autenticação, edição de formulário, submissão pública).
+- Cobrir validações de CPF, CEP e telefone.
