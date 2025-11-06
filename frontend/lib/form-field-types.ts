@@ -100,7 +100,8 @@ export interface FormField {
 export interface Form {
   id: string;
   tenant_id: string;
-  title: string;
+  slug?: string;
+  name: string;
   description?: string;
   is_active: boolean;
   settings: {

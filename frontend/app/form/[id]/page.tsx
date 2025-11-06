@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,10 +22,30 @@ export default function PublicFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [tenants, setTenants] = useState<{ id: string; name: string; slug?: string }[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState<string>('');
 
   useEffect(() => {
     fetchForm();
   }, [formId]);
+
+  useEffect(() => {
+    const fetchTenants = async () => {
+      try {
+        const response = await fetch('/api/public/tenants');
+        const data = await response.json();
+        if (response.ok) {
+          const list = Array.isArray(data.tenants) ? data.tenants : [];
+          setTenants(list);
+        } else {
+          console.error('Falha ao listar polos');
+        }
+      } catch (err) {
+        console.error('Erro ao carregar polos', err);
+      }
+    };
+    fetchTenants();
+  }, []);
 
   const fetchForm = async () => {
     try {
@@ -33,7 +54,16 @@ export default function PublicFormPage() {
       const data = await response.json();
 
       if (response.ok) {
+        // Se o formulário possui slug, redirecionar para a URL curta
+        if (data.form?.slug) {
+          router.replace(`/f/${data.form.slug}`);
+          return;
+        }
         setForm(data.form);
+        // Se o formulário estiver vinculado a um polo específico, selecionar automaticamente esse polo
+        if (data.form?.tenant_id) {
+          setSelectedTenant(data.form?.tenants?.id || data.form.tenant_id);
+        }
         // Inicializar formData com valores vazios
         const initialData: Record<string, any> = {};
         data.form.form_fields?.forEach((field: FormField) => {
@@ -158,6 +188,11 @@ export default function PublicFormPage() {
       document.getElementById(`field-${firstErrorField}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    // Validar seleção de polo apenas para formulários globais (sem tenant vinculado)
+    if (!form?.tenant_id && !selectedTenant) {
+      setError('Selecione um polo para enviar seu formulário.');
+      return;
+    }
 
     setSubmitting(true);
 
@@ -168,6 +203,8 @@ export default function PublicFormPage() {
         body: JSON.stringify({
           form_id: formId,
           data: formData,
+          // Enviar tenant_id apenas se houver seleção (em formulários globais) ou se o formulário tiver polo vinculado
+          ...(selectedTenant ? { tenant_id: selectedTenant } : {}),
         }),
       });
 
@@ -446,17 +483,16 @@ export default function PublicFormPage() {
       <div className="max-w-3xl mx-auto">
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-12 w-12 bg-brand-primary rounded-full flex items-center justify-center">
-                <span className="text-xl font-bold text-white">IWE</span>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{form?.tenants?.name}</p>
-              </div>
+            {/* Logo centralizada no topo */}
+            <div className="flex justify-center mb-4">
+              <Image src="/logo.png" alt="Logo IWE" width={64} height={64} className="rounded-full" />
             </div>
-            <CardTitle className="text-3xl">{form?.title}</CardTitle>
+            {form?.tenants?.name && (
+              <p className="text-center text-sm text-muted-foreground">{form.tenants.name}</p>
+            )}
+            <CardTitle className="text-3xl text-center">{form?.name}</CardTitle>
             {form?.description && (
-              <CardDescription className="text-base mt-2">{form.description}</CardDescription>
+              <CardDescription className="text-base mt-2 text-center">{form.description}</CardDescription>
             )}
           </CardHeader>
           <CardContent>
@@ -467,6 +503,33 @@ export default function PublicFormPage() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="tenant_id">
+                  {form?.tenant_id ? 'Polo' : 'Polo *'}
+                </Label>
+                <select
+                  id="tenant_id"
+                  value={selectedTenant}
+                  onChange={(e) => setSelectedTenant(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-md"
+                  disabled={!!form?.tenant_id}
+                  required={!form?.tenant_id}
+                >
+                  {!form?.tenant_id && (
+                    <option value="">Selecione um polo</option>
+                  )}
+                  {form?.tenant_id ? (
+                    <option value={selectedTenant}>{form?.tenants?.name || 'Polo vinculado'}</option>
+                  ) : (
+                    tenants.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))
+                  )}
+                </select>
+                {!form?.tenant_id && !selectedTenant && (
+                  <p className="text-xs text-muted-foreground">Você deve escolher um polo antes de enviar.</p>
+                )}
+              </div>
               {form?.form_fields?.map((field) => renderField(field))}
 
               <div className="flex gap-4 pt-4">
@@ -484,7 +547,7 @@ export default function PublicFormPage() {
         </Card>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
-          Desenvolvido por <strong>IWE - Instituto Palavra da Fé</strong>
+          Instituto Wesleyano de Educação.
         </p>
       </div>
     </div>

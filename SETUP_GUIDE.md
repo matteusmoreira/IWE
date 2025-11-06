@@ -84,7 +84,7 @@ INSERT INTO auth.users (
 -- ATENÇÃO: Substitua 'SEU-UUID-AQUI' pelo ID retornado acima
 INSERT INTO users (auth_user_id, email, name, role, is_active)
 VALUES (
-  'SEU-UUID-AQUI',  -- <-- SUBSTITUIR AQUI
+  '9e53ba90-1be6-4634-b242-651a11ae3619',  -- <-- SUBSTITUIR AQUI
   'admin@iwe.com.br',
   'Super Admin',
   'superadmin',
@@ -98,13 +98,20 @@ VALUES (
 
 ## 🎨 Passo 3: Configurar Variáveis de Ambiente
 
-As variáveis já estão configuradas em `frontend/.env.local`:
+Configure o arquivo `frontend/.env.local` (não commitar valores reais):
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://bhbnkleaepzdjqgmbyhe.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJoYm5rbGVhZXB6ZGpxZ21ieWhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyOTkwMjYsImV4cCI6MjA3Nzg3NTAyNn0.f3x_sOKzxhudM6ZkHXAIiuNsqkeZ-OOVSdfQgmrujmE
+NEXT_PUBLIC_SUPABASE_URL=https://<YOUR_PROJECT_REF>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=**********
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+# Chave de Service Role (USO EXCLUSIVO NO SERVIDOR). Nunca expor no cliente.
+SUPABASE_SERVICE_ROLE_KEY=**********
 ```
+
+Notas:
+- `SUPABASE_SERVICE_ROLE_KEY` é usada apenas em rotas server-side que exigem bypass de RLS (ex.: `/api/admins`, `/api/webhooks/*`).
+- Nunca exponha a chave de Service Role no cliente nem em variáveis iniciadas com `NEXT_PUBLIC_`.
+- Em produção, configure essas variáveis no ambiente de deploy (Vercel/Netlify) e mantenha logs com valores mascarados.
 
 ## 🚀 Passo 4: Iniciar o Servidor de Desenvolvimento
 
@@ -114,6 +121,28 @@ npm run dev
 ```
 
 Acesse: **http://localhost:3000**
+
+### 4.1 Iniciar Dev apontando para PRODUÇÃO
+
+Para sempre subir o frontend local usando o banco de PRODUÇÃO do Supabase, usamos um script que lê os dados de produção do arquivo `Supabase.txt` na raiz e popula `frontend/.env.local` automaticamente (sem expor segredos). Execute:
+
+```bash
+cd frontend
+npm run dev:prod
+```
+
+Formato esperado do arquivo `Supabase.txt` (exemplos):
+
+```
+url: https://<PROJECT_REF>.supabase.co
+anon: <ANON_KEY>
+service role: <SERVICE_ROLE_KEY>
+```
+
+Notas importantes:
+- `service role` NUNCA é exposta ao cliente; é gravada em `.env.local` sem prefixo `NEXT_PUBLIC_` para uso exclusivo em rotas server-side.
+- Não versionar `Supabase.txt` (já está no `.gitignore`).
+- Garanta, no projeto de produção do Supabase, que `http://localhost:3000` está permitido em Auth > URL settings (site_url e additional_redirect_urls), senão o login local será bloqueado.
 
 ## 🔐 Passo 5: Fazer Login
 

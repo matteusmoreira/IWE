@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 // Cliente público do Supabase
 const supabase = createClient(
@@ -11,7 +12,7 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { form_id, data: formData } = body;
+    const { form_id, data: formData, tenant_id } = body;
 
     if (!form_id || !formData) {
       return NextResponse.json(
@@ -19,6 +20,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Nota: tenant_id pode ser opcional quando o formulário possui tenant vinculado
 
     // Buscar formulário para validar
     const { data: form, error: formError } = await supabase
@@ -44,6 +47,69 @@ export async function POST(request: NextRequest) {
         { error: 'Formulário não encontrado ou inativo' },
         { status: 404 }
       );
+    }
+
+    // Validar e resolver tenant da submissão
+    const admin = createAdminClient();
+    let tenantToUse: { id: string; name: string; status: boolean } | null = null;
+
+    if (form.tenant_id) {
+      // Formulário vinculado a um polo específico: deve usar o mesmo polo
+      // Se body.tenant_id vier e for diferente, rejeitar
+      if (tenant_id && tenant_id !== form.tenant_id) {
+        return NextResponse.json(
+          { error: 'Polo selecionado não corresponde ao polo do formulário' },
+          { status: 400 }
+        );
+      }
+
+      const { data: fixedTenant, error: fixedTenantError } = await admin
+        .from('tenants')
+        .select('id, name, status')
+        .eq('id', form.tenant_id)
+        .single();
+
+      if (fixedTenantError || !fixedTenant) {
+        return NextResponse.json(
+          { error: 'Polo do formulário inválido' },
+          { status: 400 }
+        );
+      }
+      if (fixedTenant.status !== true) {
+        return NextResponse.json(
+          { error: 'Polo do formulário está inativo' },
+          { status: 400 }
+        );
+      }
+      tenantToUse = fixedTenant as any;
+    } else {
+      // Formulário global: tenant_id é obrigatório
+      if (!tenant_id) {
+        return NextResponse.json(
+          { error: 'tenant_id é obrigatório para este formulário. Selecione um polo.' },
+          { status: 400 }
+        );
+      }
+
+      const { data: selectedTenant, error: tenantError } = await admin
+        .from('tenants')
+        .select('id, name, status')
+        .eq('id', tenant_id)
+        .single();
+
+      if (tenantError || !selectedTenant) {
+        return NextResponse.json(
+          { error: 'Polo inválido' },
+          { status: 400 }
+        );
+      }
+      if (selectedTenant.status !== true) {
+        return NextResponse.json(
+          { error: 'Polo inativo. Escolha outro polo.' },
+          { status: 400 }
+        );
+      }
+      tenantToUse = selectedTenant as any;
     }
 
     // Validar campos obrigatórios
@@ -154,7 +220,8 @@ export async function POST(request: NextRequest) {
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .insert({
-        tenant_id: form.tenant_id,
+        tenant_id: tenantToUse!.id,
+        polo: tenantToUse!.name,
         form_definition_id: form_id,
         data: formData,
         payment_status: form.settings?.require_payment ? 'PENDENTE' : 'NAO_APLICAVEL',

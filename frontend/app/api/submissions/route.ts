@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 
 // GET /api/submissions - Listar submissões com filtros
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -45,7 +44,7 @@ export async function GET(request: NextRequest) {
         ),
         form_definitions (
           id,
-          title
+          name
         )
       `, { count: 'exact' })
       .order('created_at', { ascending: false })

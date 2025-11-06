@@ -42,6 +42,7 @@ export default function TenantsPage() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -62,6 +63,7 @@ export default function TenantsPage() {
 
       if (response.ok) {
         setTenants(data.tenants || []);
+        setRole(data.role || null);
       } else {
         toast.error(data.error || 'Erro ao carregar polos');
       }
@@ -74,6 +76,11 @@ export default function TenantsPage() {
   };
 
   const handleOpenDialog = (tenant?: Tenant) => {
+    // RBAC: apenas superadmin pode criar/editar polos
+    if (role !== 'superadmin') {
+      toast.error('Apenas superadmin pode criar/editar polos');
+      return;
+    }
     if (tenant) {
       setEditingTenant(tenant);
       setFormData({
@@ -102,6 +109,11 @@ export default function TenantsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // RBAC: apenas superadmin pode criar/editar polos
+    if (role !== 'superadmin') {
+      toast.error('Apenas superadmin pode criar/editar polos');
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -134,6 +146,11 @@ export default function TenantsPage() {
   const handleDelete = async () => {
     if (!deletingTenant) return;
 
+    // RBAC: apenas superadmin pode excluir polos
+    if (role !== 'superadmin') {
+      toast.error('Apenas superadmin pode excluir polos');
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -173,10 +190,12 @@ export default function TenantsPage() {
           <h1 className="text-3xl font-bold">Polos</h1>
           <p className="text-muted-foreground">Gerencie os polos (tenants) do sistema</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-brand-primary hover:bg-brand-primary/90">
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Polo
-        </Button>
+        {role === 'superadmin' && (
+          <Button onClick={() => handleOpenDialog()} className="bg-brand-primary hover:bg-brand-primary/90">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Polo
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -190,10 +209,12 @@ export default function TenantsPage() {
           {tenants.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">Nenhum polo cadastrado ainda.</p>
-              <Button onClick={() => handleOpenDialog()} className="mt-4" variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Criar Primeiro Polo
-              </Button>
+              {role === 'superadmin' && (
+                <Button onClick={() => handleOpenDialog()} className="mt-4" variant="outline">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Criar Primeiro Polo
+                </Button>
+              )}
             </div>
           ) : (
             <Table>
@@ -203,7 +224,9 @@ export default function TenantsPage() {
                   <TableHead>Slug</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Criado em</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  {role === 'superadmin' && (
+                    <TableHead className="text-right">Ações</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -219,25 +242,27 @@ export default function TenantsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{formatDate(tenant.created_at)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenDialog(tenant)}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setDeletingTenant(tenant);
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
+                    {role === 'superadmin' && (
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenDialog(tenant)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setDeletingTenant(tenant);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

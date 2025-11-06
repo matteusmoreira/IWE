@@ -84,10 +84,11 @@ export default function FormsPage() {
     }
   };
 
-  const copyPublicUrl = (formId: string) => {
-    const url = `${window.location.origin}/form/${formId}`;
+  const copyPublicUrl = (form: Form) => {
+    const base = window.location.origin;
+    const url = form.slug ? `${base}/f/${form.slug}` : `${base}/form/${form.id}`;
     navigator.clipboard.writeText(url);
-    toast.success('URL copiada para a área de transferência!');
+    toast.success('URL pública copiada!');
   };
 
   if (loading) {
@@ -150,14 +151,21 @@ export default function FormsPage() {
                   <TableRow key={form.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{form.title}</p>
+                        <p className="font-medium">{form.name}</p>
                         {form.description && (
                           <p className="text-sm text-muted-foreground">{form.description}</p>
+                        )}
+                        {form.slug && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            <code className="bg-muted px-2 py-0.5 rounded">
+                              {`${typeof window !== 'undefined' ? window.location.origin : ''}/f/${form.slug}`}
+                            </code>
+                          </p>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{form.tenants?.name || 'N/A'}</Badge>
+                      <Badge variant="outline">{form.tenants?.name || '— sem polo —'}</Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">
@@ -174,7 +182,7 @@ export default function FormsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => copyPublicUrl(form.id)}
+                        onClick={() => copyPublicUrl(form)}
                         title="Copiar URL pública"
                       >
                         <Copy className="h-4 w-4" />
@@ -182,7 +190,7 @@ export default function FormsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => router.push(`/dashboard/forms/${form.id}`)}
+                        onClick={() => router.push(`/dashboard/forms/${form.id}/edit`)}
                         title="Editar"
                       >
                         <Edit2 className="h-4 w-4" />
@@ -213,7 +221,7 @@ export default function FormsPage() {
           <DialogHeader>
             <DialogTitle>Confirmar Exclusão</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja deletar o formulário <strong>{deletingForm?.title}</strong>?
+              Tem certeza que deseja deletar o formulário <strong>{deletingForm?.name}</strong>?
               {' '}Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>

@@ -13,9 +13,11 @@ import {
   Moon,
   Sun,
   Menu,
-  Shield
+  Shield,
+  MessageCircle
 } from 'lucide-react';
 import Link from 'next/link';
+import Logo from '@/components/ui/logo';
 import { toast } from 'sonner';
 
 export default function DashboardLayout({
@@ -42,25 +44,19 @@ export default function DashboardLayout({
 
   const checkAuth = async () => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-
-      if (!authUser) {
-        router.push('/auth/login');
-        return;
+      // Buscar usuário autenticado via backend
+      const res = await fetch('/api/users/me')
+      if (!res.ok) {
+        router.push('/auth/login')
+        return
       }
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('auth_user_id', authUser.id)
-        .single();
-
-      setUser(userData);
+      const payload = await res.json()
+      setUser(payload?.user)
     } catch (error) {
-      console.error('Auth error:', error);
-      router.push('/auth/login');
+      console.error('Auth error:', error)
+      router.push('/auth/login')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   };
 
@@ -80,14 +76,17 @@ export default function DashboardLayout({
     localStorage.setItem('darkMode', String(newMode));
     document.documentElement.classList.toggle('dark', newMode);
   };
-
+  // Monta itens de menu conforme o papel do usuário
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
     { icon: Users, label: 'Polos', href: '/dashboard/tenants' },
-    { icon: Shield, label: 'Admins', href: '/dashboard/admins' },
-    { icon: FileText, label: 'Formulários', href: '/dashboard/forms' },
+    // Remover "Admins" para admins; manter para superadmin
+    ...(user?.role === 'superadmin' ? [{ icon: Shield, label: 'Admins', href: '/dashboard/admins' }] : []),
+    // Remover "Formulários" para admins; manter para superadmin
+    ...(user?.role === 'superadmin' ? [{ icon: FileText, label: 'Formulários', href: '/dashboard/forms' }] : []),
     { icon: Users, label: 'Alunos', href: '/dashboard/submissions' },
-    { icon: Settings, label: 'Configurações', href: '/dashboard/settings' },
+    // Ocultar "Configurações" para admins; manter para superadmin
+    ...(user?.role === 'superadmin' ? [{ icon: Settings, label: 'Configurações', href: '/dashboard/settings' }] : []),
   ];
 
   if (loading) {
@@ -109,10 +108,7 @@ export default function DashboardLayout({
       >
         <div className="h-full px-3 py-4 overflow-y-auto">
           <div className="flex items-center mb-5 px-3">
-            <div className="h-10 w-10 bg-brand-primary rounded-full flex items-center justify-center">
-              <span className="text-xl font-bold text-white">IWE</span>
-            </div>
-            <span className="ml-3 text-xl font-bold">IWE System</span>
+            <Logo size="xl" />
           </div>
           <ul className="space-y-2 font-medium">
             {menuItems.map((item) => (

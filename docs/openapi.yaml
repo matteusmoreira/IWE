@@ -1,0 +1,824 @@
+openapi: 3.0.3
+info:
+  title: SaaS IWE PostgREST API
+  version: 0.1.0
+  description: |
+    API baseada em PostgREST do Supabase. Endpoints expõem tabelas/views do schema public.
+    Use cabeçalho `apikey` com a chave do projeto. Não compartilhe segredos publicamente.
+servers:
+  - url: https://{projectRef}.supabase.co/rest/v1
+    variables:
+      projectRef:
+        default: YOUR_PROJECT_REF
+        description: Referência do projeto Supabase.
+  - url: http://localhost:3000
+    description: Next.js API (rotas internas, autenticadas por sessão). Somente para desenvolvimento.
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: apikey
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: sb:token
+security:
+  - ApiKeyAuth: []
+paths:
+  /message_templates:
+    get:
+      summary: Lista templates de mensagem
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+          description: Filtrar por tenant (eq).
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Cria template (RLS aplica)
+      responses:
+        '201':
+          description: Created
+  /file_uploads:
+    get:
+      summary: Lista arquivos enviados
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Registra upload (RLS aplica)
+      responses:
+        '201':
+          description: Created
+  /submissions:
+    get:
+      summary: Lista submissões de formulário
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Cria submissão
+      responses:
+        '201':
+          description: Created
+  /dashboard_metrics:
+    get:
+      summary: Métricas de dashboard (view)
+      responses:
+        '200':
+          description: OK
+
+  /api/public/tenants:
+    get:
+      summary: Lista polos ativos (público)
+      description: |
+        Endpoint público do Next.js que retorna a lista de polos (tenants) com status ativo.
+        Executa no servidor com Service Role para contornar RLS, mas expõe apenas campos seguros.
+      responses:
+        '200':
+          description: Lista de polos ativos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicTenant'
+
+  /api/public/forms/{id}:
+    get:
+      summary: Obtém formulário público por ID
+      description: |
+        Retorna definição do formulário e seus campos (apenas ativos), ordenados por `order_index`.
+        Executa com Service Role para evitar bloqueio por RLS. Inclui o campo `slug` quando disponível.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Definição e campos do formulário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicFormDefinition'
+        '404':
+          description: Formulário não encontrado ou inativo.
+
+  /api/public/forms/by-slug/{slug}:
+    get:
+      summary: Obtém formulário público por slug
+      description: |
+        Retorna a definição do formulário e seus campos (apenas ativos) a partir do `slug` único por tenant (ou global).
+        Executa com Service Role para evitar bloqueio por RLS.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Definição e campos do formulário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicFormDefinition'
+        '404':
+          description: Formulário não encontrado ou inativo.
+
+  /api/public/submissions:
+    post:
+      summary: Cria submissão pública de formulário
+      description: |
+        Recebe dados de submissão e valida o `tenant_id` conforme o tipo de formulário:
+        - Formulário vinculado a um polo (tenant_id não nulo): `tenant_id` na submissão é opcional; se informado, deve coincidir com o do formulário.
+        - Formulário global (tenant_id nulo): `tenant_id` na submissão é obrigatório e o polo deve estar ativo.
+        Aceita apenas formulários ativos e registra `polo` (nome) na submissão.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicSubmissionRequest'
+      responses:
+        '201':
+          description: Submissão criada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicSubmissionResponse'
+        '400':
+          description: Requisição inválida (ex.: tenant ausente/inativo).
+        '404':
+          description: Formulário não encontrado.
+
+  /api/metrics:
+    get:
+      summary: Métricas de dashboard (Next.js API)
+      description: |
+        Retorna métricas agregadas do painel com filtros por mês/ano e tenant. Executa no servidor com sessão do usuário e respeita RLS.
+        Parâmetros `month` e `year` definem o intervalo [primeiro dia do mês, primeiro dia do mês seguinte).
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: query
+          name: tenant_id
+          schema:
+            type: string
+          description: Filtrar métricas por um tenant específico (quando omitido, aplica RLS do usuário).
+        - in: query
+          name: month
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+          description: Mês (1-12). Se omitido, usa o mês atual.
+        - in: query
+          name: year
+          schema:
+            type: integer
+            minimum: 2000
+          description: Ano (ex.: 2025). Se omitido, usa o ano atual.
+      responses:
+        '200':
+          description: Métricas do período selecionado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardMetrics'
+        '401':
+          description: Não autorizado (sessão ausente ou inválida).
+        '500':
+          description: Erro interno ao calcular métricas.
+
+  /api/admins:
+    get:
+      summary: Lista admins com polos vinculados (Next.js API)
+      description: |
+        Endpoint interno do Next.js que utiliza Service Role no servidor para garantir a listagem completa dos vínculos `admin_tenants` (contornando RLS na leitura).
+        Requer sessão válida de usuário com papel `superadmin`.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Lista de admins com seus polos vinculados.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Admin'
+    patch:
+      summary: Atualiza admin e vínculos de polos (Next.js API)
+      description: |
+        Atualiza dados de um admin específico e seus vínculos em `admin_tenants`. Operação executada no servidor com Service Role.
+        Requer sessão válida de usuário com papel `superadmin`.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAdminRequest'
+      responses:
+        '200':
+          description: Admin atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Admin'
+
+  /api/tenants:
+    get:
+      summary: Lista polos (tenants)
+      description: |
+        Endpoint interno do Next.js para listar polos respeitando RLS. Requer sessão válida. Retorna também o papel (`role`) do usuário autenticado.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Lista de tenants disponível pelo papel atual.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  role:
+                    type: string
+                    enum: [superadmin, admin, user]
+        '401':
+          description: Não autorizado.
+    post:
+      summary: Cria novo polo (superadmin)
+      description: |
+        Criação de tenants. Requer sessão válida e papel `superadmin`. RLS no banco impede criação por `admin`.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                status:
+                  type: boolean
+                settings:
+                  type: object
+      responses:
+        '201':
+          description: Tenant criado.
+        '403':
+          description: Proibido para não superadmin.
+
+  /api/tenants/{id}:
+    get:
+      summary: Obtém polo por ID
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tenant encontrado.
+    patch:
+      summary: Atualiza polo (superadmin)
+      description: |
+        Atualiza dados do tenant. Requer papel `superadmin`. RLS impede atualização por `admin`.
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                status:
+                  type: boolean
+                settings:
+                  type: object
+      responses:
+        '200':
+          description: Tenant atualizado.
+        '403':
+          description: Proibido para não superadmin.
+
+  /api/forms:
+    get:
+      summary: Lista formulários (Next.js API)
+      description: |
+        Lista formulários disponíveis para o usuário autenticado, respeitando RLS e vínculos de tenant.
+        Observações:
+        - Admins visualizam formulários do(s) polo(s) que administram e também formulários globais (tenant_id = null).
+        - Superadmins visualizam todos os formulários.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Lista de formulários.
+    post:
+      summary: Cria formulário (Next.js API)
+      description: |
+        Cria um novo formulário. O campo `slug` é gerado automaticamente no servidor a partir de `name` e é único por tenant.
+        Caso ocorra colisão, será acrescentado um sufixo incremental.
+        Regras de papel:
+        - Admin: deve fornecer `tenant_id` de um polo que administra (não pode criar formulário global).
+        - Superadmin: pode omitir `tenant_id` para criar formulário global (tenant_id = null) ou informar um tenant específico.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormCreateRequest'
+      responses:
+        '201':
+          description: Formulário criado.
+        '400':
+          description: Requisição inválida.
+        '401':
+          description: Não autorizado.
+
+  /api/forms/{id}:
+    get:
+      summary: Obtém formulário por ID (Next.js API)
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Formulário encontrado.
+        '404':
+          description: Não encontrado.
+    patch:
+      summary: Atualiza formulário (Next.js API)
+      description: |
+        Atualiza dados do formulário, inclusive configurações de pagamento (`requires_payment`, `payment_amount`) e definição de campos.
+        Observação: `slug` não é atualizado por padrão.
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormUpdateRequest'
+      responses:
+        '200':
+          description: Formulário atualizado.
+        '400':
+          description: Requisição inválida.
+        '401':
+          description: Não autorizado.
+        '404':
+          description: Não encontrado.
+    delete:
+      summary: Exclui formulário (Next.js API)
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Formulário excluído.
+        '401':
+          description: Não autorizado.
+        '404':
+          description: Não encontrado.
+
+  /api/payments/create-preference:
+    post:
+      summary: Cria preferência de pagamento no Mercado Pago (Next.js API)
+      description: |
+        Cria uma preferência de pagamento no Mercado Pago para uma submissão com `payment_status = 'PENDENTE'`.
+        O valor (`amount`) é determinado por `submission.payment_amount` ou `form_definitions.settings.payment_amount`.
+        Requer configuração ativa do Mercado Pago para o tenant (`mercadopago_configs.is_active = true`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentPreferenceRequest'
+      responses:
+        '200':
+          description: Preferência criada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentPreferenceResponse'
+        '400':
+          description: Requisição inválida (ex.: submissão não pendente ou valor <= 0).
+        '500':
+          description: Erro ao integrar com Mercado Pago.
+    delete:
+      summary: Deleta polo (superadmin)
+      description: |
+        Remove um tenant por ID. Requer papel `superadmin`. RLS impede deleção por `admin`.
+      security:
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tenant removido.
+        '403':
+          description: Proibido para não superadmin.
+
+  /api/users/ensure:
+    post:
+      summary: Garante registro do usuário autenticado
+      description: |
+        Upsert idempotente no `public.users` vinculado ao usuário autenticado.
+        Executa com Service Role no servidor. Aceita cookie de sessão ou header `Authorization: Bearer <access_token>`.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Registro garantido.
+        '401':
+          description: Não autenticado.
+        '500':
+          description: Erro interno.
+
+  /api/users/me:
+    get:
+      summary: Retorna o próprio usuário autenticado
+      description: |
+        Busca segura do registro `public.users` do usuário autenticado usando Service Role no backend.
+        Usa cookie de sessão; suporta header `Authorization: Bearer <access_token>` como fallback.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Usuário encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Não autenticado.
+        '404':
+          description: Usuário não encontrado.
+        '500':
+          description: Erro interno.
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        auth_user_id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [superadmin, admin, user]
+        is_active:
+          type: boolean
+        avatar_url:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DashboardMetrics:
+      type: object
+      properties:
+        totalSubmissions:
+          type: integer
+          description: Total de inscrições no mês.
+        totalRevenue:
+          type: number
+          format: float
+          description: Soma de pagamentos com status PAGO.
+        conversionRate:
+          type: number
+          format: float
+          description: Percentual de submissões com pagamento PAGO no período.
+        activeForms:
+          type: integer
+          description: Quantidade de formulários ativos.
+        submissionsByDay:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+        revenueByDay:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              amount:
+                type: number
+                format: float
+        formPerformance:
+          type: array
+          items:
+            type: object
+            properties:
+              formId:
+                type: string
+              formTitle:
+                type: string
+              submissions:
+                type: integer
+              conversions:
+                type: integer
+              conversionRate:
+                type: number
+                format: float
+        paymentStats:
+          type: object
+          properties:
+            approved:
+              type: integer
+              description: Contagem de PAGO.
+            pending:
+              type: integer
+              description: Contagem de PENDENTE.
+            failed:
+              type: integer
+              description: Contagem de CANCELADO + REEMBOLSADO.
+    Admin:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [superadmin, admin, user]
+        admin_tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminTenant'
+    AdminTenant:
+      type: object
+      properties:
+        user_id:
+          type: string
+        tenant_id:
+          type: string
+        tenants:
+          $ref: '#/components/schemas/Tenant'
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+    PublicTenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+    PublicFormField:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [text, number, email, phone, select, checkbox, radio, textarea, date, cpf, cep, file]
+        required:
+          type: boolean
+        placeholder:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        validation_rules:
+          type: object
+        order_index:
+          type: integer
+    PublicFormDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        settings:
+          type: object
+        tenant_id:
+          type: string
+          nullable: true
+        tenants:
+          $ref: '#/components/schemas/PublicTenant'
+        form_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicFormField'
+    PublicSubmissionRequest:
+      type: object
+      required: [form_definition_id, data]
+      properties:
+        form_definition_id:
+          type: string
+        tenant_id:
+          type: string
+          description: ID do polo selecionado. Obrigatório somente quando o formulário for global (tenant_id nulo).
+        data:
+          type: object
+          description: JSON com os valores dos campos do formulário.
+        origin:
+          type: string
+          description: Origem da submissão (ex.: public_form).
+    PublicSubmissionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        form_definition_id:
+          type: string
+        tenant_id:
+          type: string
+        polo:
+          type: string
+          description: Nome do polo vinculado.
+        created_at:
+          type: string
+          format: date-time
+    UpdateAdminRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        tenant_ids:
+          type: array
+          items:
+            type: string
+    FormCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        tenant_id:
+          type: string
+          description: Opcional para superadmin (criação global quando omitido). Obrigatório para admins.
+        is_active:
+          type: boolean
+          default: true
+        settings:
+          type: object
+          properties:
+            requires_payment:
+              type: boolean
+              default: false
+            payment_amount:
+              type: number
+              format: float
+              description: Valor em BRL quando `requires_payment` for verdadeiro.
+        fields:
+          type: array
+          description: Opcional na criação; quando omitido, o formulário é criado sem campos.
+          items:
+            $ref: '#/components/schemas/PublicFormField'
+      description: |
+        `slug` é gerado automaticamente no servidor a partir de `name` e é único por tenant (ou global quando `tenant_id = null`).
+    FormUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        tenant_id:
+          type: string
+          description: Apenas superadmins podem alterar o tenant (inclusive definir nulo para tornar global).
+        is_active:
+          type: boolean
+        settings:
+          type: object
+          properties:
+            requires_payment:
+              type: boolean
+            payment_amount:
+              type: number
+              format: float
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicFormField'
+    PaymentPreferenceRequest:
+      type: object
+      required: [submission_id]
+      properties:
+        submission_id:
+          type: string
+      description: ID da submissão com `payment_status = 'PENDENTE'`.
+    PaymentPreferenceResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        preference_id:
+          type: string
+        init_point:
+          type: string
+          description: URL de checkout (web).
+        sandbox_init_point:
+          type: string
+          description: URL de checkout em sandbox.

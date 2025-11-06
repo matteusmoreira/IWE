@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-// Cliente público do Supabase (não precisa de autenticação)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Preferimos Service Role para evitar bloqueios de RLS na leitura pública de formulários
+const admin = createAdminClient();
 
 // GET /api/public/forms/[id] - Buscar formulário público (sem autenticação)
 export async function GET(
@@ -14,11 +12,12 @@ export async function GET(
 ) {
   try {
     // Buscar formulário
-    const { data: form, error } = await supabase
+    const { data: form, error } = await admin
       .from('form_definitions')
       .select(`
         id,
-        title,
+        slug,
+        name,
         description,
         settings,
         tenant_id,
@@ -36,7 +35,8 @@ export async function GET(
           placeholder,
           options,
           validation_rules,
-          order_index
+          order_index,
+          is_active
         )
       `)
       .eq('id', params.id)

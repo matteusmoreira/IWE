@@ -57,7 +57,7 @@ export type Database = {
       form_definitions: {
         Row: {
           id: string;
-          tenant_id: string;
+          tenant_id: string | null;
           name: string;
           slug: string;
           description: string | null;

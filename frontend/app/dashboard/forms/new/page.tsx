@@ -35,16 +35,21 @@ interface Tenant {
 
 export default function NewFormPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
 
   // Form data
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
-  const [selectedTenant, setSelectedTenant] = useState('');
+  // Polo opcional: criação de formulário global por padrão
+  // Status do formulário será sempre ativo por padrão na criação
   const [isActive, setIsActive] = useState(true);
   const [fields, setFields] = useState<FormField[]>([]);
+
+  // Tenants
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [selectedTenant, setSelectedTenant] = useState('');
+  const [tenantsLoading, setTenantsLoading] = useState(false);
 
   // Field being edited
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
@@ -61,30 +66,23 @@ export default function NewFormPage() {
   });
 
   useEffect(() => {
-    fetchTenants();
-  }, []);
-
-  const fetchTenants = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/tenants');
-      const data = await response.json();
-
-      if (response.ok) {
-        setTenants(data.tenants || []);
-        if (data.tenants?.length > 0) {
-          setSelectedTenant(data.tenants[0].id);
+    const loadTenants = async () => {
+      setTenantsLoading(true);
+      try {
+        const response = await fetch('/api/tenants');
+        const data = await response.json();
+        if (response.ok) {
+          setTenants(data.tenants || []);
         }
-      } else {
-        toast.error(data.error || 'Erro ao carregar polos');
+      } catch (error) {
+        console.error('Error fetching tenants:', error);
+        toast.error('Erro ao carregar polos');
+      } finally {
+        setTenantsLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching tenants:', error);
-      toast.error('Erro ao carregar polos');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    loadTenants();
+  }, []);
 
   const addField = (type: string) => {
     const newField: FormField = {
@@ -181,8 +179,8 @@ export default function NewFormPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formTitle || !selectedTenant) {
-      toast.error('Título e Polo são obrigatórios');
+    if (!formTitle) {
+      toast.error('Título é obrigatório');
       return;
     }
 
@@ -195,11 +193,11 @@ export default function NewFormPage() {
 
     try {
       const payload = {
-        tenant_id: selectedTenant,
-        title: formTitle,
+        name: formTitle,
         description: formDescription || null,
         is_active: isActive,
         settings: {},
+        ...(selectedTenant ? { tenant_id: selectedTenant } : {}),
         fields: fields.map(({ id, ...field }) => field), // Remove id para criar novos
       };
 
@@ -292,36 +290,31 @@ export default function NewFormPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tenant">Polo *</Label>
-                  <select
-                    id="tenant"
-                    value={selectedTenant}
-                    onChange={(e) => setSelectedTenant(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border rounded-md"
-                    required
-                  >
-                    {tenants.map((tenant) => (
-                      <option key={tenant.id} value={tenant.id}>
-                        {tenant.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Observação: Polo e Status não são configurados manualmente aqui.
+                  - O formulário é criado como Ativo por padrão.
+                  - Opcionalmente, selecione um Polo para criar o formulário vinculado (obrigatório para admins). */}
 
-                <div className="space-y-2">
-                  <Label htmlFor="is_active">Status</Label>
-                  <select
-                    id="is_active"
-                    value={isActive ? 'true' : 'false'}
-                    onChange={(e) => setIsActive(e.target.value === 'true')}
-                    className="w-full px-3 py-2 text-sm border rounded-md"
-                  >
-                    <option value="true">Ativo</option>
-                    <option value="false">Inativo</option>
-                  </select>
-                </div>
+              <div className="space-y-2">
+                <Label>Polo (opcional — obrigatório para admins)</Label>
+                <Select
+                  value={selectedTenant}
+                  onChange={(e) => setSelectedTenant(e.target.value)}
+                  className="w-full"
+                >
+                  <option value="">
+                    {tenantsLoading ? 'Carregando polos...' : 'Selecione um polo (opcional)'}
+                  </option>
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  - Superadmin: pode criar formulário global deixando vazio.
+                  <br />
+                  - Admin: deve selecionar um polo.
+                </p>
               </div>
             </CardContent>
           </Card>

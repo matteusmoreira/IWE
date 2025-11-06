@@ -19,6 +19,7 @@ dist/
 
 # IMPORTANTE: Não enviar credenciais
 frontend/.env.local
+Supabase.txt
 
 # Debug
 npm-debug.log*

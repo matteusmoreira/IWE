@@ -1,0 +1,33 @@
+name: Validate Supabase Schema
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "supabase/**"
+      - "scripts/validate-schema.ps1"
+      - "scripts/validate-schema.js"
+      - "docs/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "supabase/**"
+      - "scripts/validate-schema.ps1"
+      - "scripts/validate-schema.js"
+      - "docs/**"
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate schema via PowerShell
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/validate-schema.ps1
+
+      - name: Show summary
+        if: ${{ failure() }}
+        run: |
+          echo "Validation failed. Review supabase/schema_public.sql, supabase/schema_storage.sql e scripts/validate-schema.ps1."

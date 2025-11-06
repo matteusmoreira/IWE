@@ -39,7 +39,7 @@ interface Submission {
   };
   form_definitions: {
     id: string;
-    title: string;
+    name: string;
   };
 }
 
@@ -146,7 +146,7 @@ export default function SubmissionsPage() {
       const row = [
         sub.id,
         sub.tenants.name,
-        sub.form_definitions.title,
+        sub.form_definitions.name,
         ...Array.from(allFields).map((field) => {
           const value = sub.data[field];
           if (Array.isArray(value)) return value.join(', ');
@@ -309,7 +309,7 @@ export default function SubmissionsPage() {
                           <Badge variant="outline">{submission.tenants.name}</Badge>
                         </TableCell>
                         <TableCell className="font-medium">
-                          {submission.form_definitions.title}
+                {submission.form_definitions.name}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">{displayData}</TableCell>
                         <TableCell>
@@ -358,7 +358,7 @@ export default function SubmissionsPage() {
           <DialogHeader>
             <DialogTitle>Detalhes da Submissão</DialogTitle>
             <DialogDescription>
-              {selectedSubmission?.form_definitions.title} • {selectedSubmission?.tenants.name}
+            {selectedSubmission?.form_definitions.name} • {selectedSubmission?.tenants.name}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

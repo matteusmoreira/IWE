@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 // GET /api/admins - Listar todos os admins
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -25,7 +26,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Buscar admins com seus tenants
-    const { data: admins, error: adminsError } = await supabase
+    // Usar adminClient (service role) para ler admin_tenants, evitando bloqueios de RLS
+    const { data: admins, error: adminsError } = await adminClient
       .from('users')
       .select(`
         *,
@@ -55,7 +57,8 @@ export async function GET(request: NextRequest) {
 // POST /api/admins - Criar novo admin
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -87,8 +90,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
     }
 
-    // Criar usuário no auth.users usando admin API
-    const { data: authUser, error: createAuthError } = await supabase.auth.admin.createUser({
+    // Criar usuário no auth.users usando admin API (service role)
+    const { data: authUser, error: createAuthError } = await adminClient.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Criar registro na tabela users
-    const { data: newUser, error: createUserError } = await supabase
+    const { data: newUser, error: createUserError } = await adminClient
       .from('users')
       .insert({
         auth_user_id: authUser.user.id,
@@ -117,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     if (createUserError) {
       // Se falhar, deletar o usuário do auth
-      await supabase.auth.admin.deleteUser(authUser.user.id);
+      await adminClient.auth.admin.deleteUser(authUser.user.id);
       return NextResponse.json({ error: createUserError.message }, { status: 500 });
     }
 
@@ -128,7 +131,7 @@ export async function POST(request: NextRequest) {
         tenant_id,
       }));
 
-      const { error: linkError } = await supabase
+      const { error: linkError } = await adminClient
         .from('admin_tenants')
         .insert(adminTenants);
 
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Registrar auditoria
-    await supabase.from('audit_logs').insert({
+    await adminClient.from('audit_logs').insert({
       user_id: userData.id,
       action: 'CREATE',
       resource_type: 'admin',

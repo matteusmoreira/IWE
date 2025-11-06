@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
+import { slugify } from '@/lib/utils';
 
 // GET /api/forms - Listar todos os formulários
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -53,9 +53,12 @@ export async function GET(request: NextRequest) {
     if (userData.role !== 'superadmin') {
       const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
       if (tenantIds.length === 0) {
-        return NextResponse.json({ forms: [] });
+        // Admin sem polos: ainda pode ver formulários globais
+        query = query.is('tenant_id', null);
+      } else {
+        // Incluir formulários globais e dos polos administrados
+        query = query.or(`tenant_id.is.null,tenant_id.in.(${tenantIds.join(',')})`);
       }
-      query = query.in('tenant_id', tenantIds);
     }
 
     const { data: forms, error: formsError } = await query;
@@ -80,7 +83,7 @@ export async function GET(request: NextRequest) {
 // POST /api/forms - Criar novo formulário
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -101,27 +104,70 @@ export async function POST(request: NextRequest) {
 
     // Parse do body
     const body = await request.json();
-    const { tenant_id, title, description, is_active, settings, fields } = body;
+    const { tenant_id, description, is_active, settings, fields } = body;
+    const name: string | undefined = body.name ?? body.title;
 
     // Validações
-    if (!tenant_id || !title) {
-      return NextResponse.json({ error: 'Tenant and title are required' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
     }
 
     // Verificar se usuário tem acesso ao tenant
     if (userData.role !== 'superadmin') {
+      // Admin deve informar um tenant válido
       const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
+      if (!tenant_id) {
+        return NextResponse.json({ error: 'Admins devem selecionar um polo' }, { status: 400 });
+      }
       if (!tenantIds.includes(tenant_id)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
 
-    // Criar formulário
+    // Gerar slug único por tenant
+    const baseSlug = slugify(name);
+    let slugCandidate = baseSlug;
+
+    // Fallback seguro caso o título gere slug vazio
+    if (!slugCandidate) {
+      slugCandidate = `form-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    // Buscar slugs existentes que começam com o baseSlug para evitar colisão
+    let existingSlugs: any[] = [];
+    if (tenant_id) {
+      const { data } = await supabase
+        .from('form_definitions')
+        .select('slug')
+        .eq('tenant_id', tenant_id)
+        .ilike('slug', `${baseSlug}%`);
+      existingSlugs = data || [];
+    } else {
+      // Formulário global: checar slugs globais (tenant_id IS NULL)
+      const { data } = await supabase
+        .from('form_definitions')
+        .select('slug')
+        .is('tenant_id', null)
+        .ilike('slug', `${baseSlug}%`);
+      existingSlugs = data || [];
+    }
+
+    if (existingSlugs && existingSlugs.length > 0) {
+      const used = new Set(existingSlugs.map((r: any) => r.slug));
+      if (used.has(slugCandidate)) {
+        let i = 2;
+        while (used.has(`${baseSlug}-${i}`)) i++;
+        slugCandidate = `${baseSlug}-${i}`;
+      }
+    }
+
+    // Criar formulário com slug
     const { data: form, error: formError } = await supabase
       .from('form_definitions')
       .insert({
         tenant_id,
-        title,
+        name,
+        slug: slugCandidate,
         description: description || null,
         is_active: is_active ?? true,
         settings: settings || {},
@@ -165,7 +211,7 @@ export async function POST(request: NextRequest) {
       action: 'CREATE',
       resource_type: 'form',
       resource_id: form.id,
-      changes: { title, description, tenant_id, fields_count: fields?.length || 0 },
+      changes: { name, description, tenant_id, fields_count: fields?.length || 0 },
     });
 
     // Buscar form completo com campos

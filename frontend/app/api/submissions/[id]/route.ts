@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 
 // GET /api/submissions/[id] - Buscar submissão por ID
 export async function GET(
@@ -8,7 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -27,7 +26,7 @@ export async function GET(
         ),
         form_definitions (
           id,
-          title,
+          name,
           form_fields (
             id,
             label,
@@ -56,7 +55,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -132,7 +131,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();

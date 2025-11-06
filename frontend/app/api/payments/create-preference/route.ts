@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
         ),
         form_definitions (
           id,
-          title,
+          name,
           settings
         )
       `)
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     const preferenceData = {
       items: [
         {
-          title: submission.form_definitions.title,
+          title: submission.form_definitions.name,
           description: `Inscrição - ${submission.tenants.name}`,
           quantity: 1,
           unit_price: amount,

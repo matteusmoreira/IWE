@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +30,7 @@ export async function POST(request: NextRequest) {
     const { data: existingEvent } = await supabase
       .from('payment_events')
       .select('id')
-      .eq('external_id', paymentId)
+      .eq('event_id', paymentId)
       .eq('provider', 'mercadopago')
       .single();
 
@@ -48,11 +47,10 @@ export async function POST(request: NextRequest) {
     const { data: eventRecord } = await supabase
       .from('payment_events')
       .insert({
-        external_id: paymentId,
+        event_id: paymentId,
         provider: 'mercadopago',
         event_type: type,
-        payload: body,
-        status: 'PROCESSANDO',
+        raw_payload: body,
       })
       .select()
       .single();
@@ -91,12 +89,7 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
       console.error('Submission not found for payment:', paymentId);
       
       // Atualizar evento como falha
-      if (eventId) {
-        await supabase
-          .from('payment_events')
-          .update({ status: 'ERRO', error_message: 'Submission not found' })
-          .eq('id', eventId);
-      }
+      // Sem atualização de status pois a tabela não possui coluna de status
       return;
     }
 
@@ -132,16 +125,7 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
     if (!paymentResponse.ok) {
       console.error('Error fetching payment from MP:', payment);
       
-      if (eventId) {
-        await supabase
-          .from('payment_events')
-          .update({ 
-            status: 'ERRO', 
-            error_message: 'Failed to fetch payment from MP',
-            metadata: payment 
-          })
-          .eq('id', eventId);
-      }
+      // Sem atualização de status; apenas log em console
       return;
     }
 
@@ -173,16 +157,6 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
 
     if (updateError) {
       console.error('Error updating submission:', updateError);
-      
-      if (eventId) {
-        await supabase
-          .from('payment_events')
-          .update({ 
-            status: 'ERRO', 
-            error_message: updateError.message 
-          })
-          .eq('id', eventId);
-      }
       return;
     }
 
@@ -191,9 +165,8 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
       await supabase
         .from('payment_events')
         .update({ 
-          status: 'PROCESSADO',
-          metadata: payment,
           submission_id: submission.id,
+          processed_at: new Date().toISOString(),
         })
         .eq('id', eventId);
     }
@@ -210,16 +183,7 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
     console.log('Payment webhook processed successfully:', paymentId);
   } catch (error) {
     console.error('Error in processPaymentWebhook:', error);
-    
-    if (eventId) {
-      await supabase
-        .from('payment_events')
-        .update({ 
-          status: 'ERRO', 
-          error_message: error instanceof Error ? error.message : 'Unknown error' 
-        })
-        .eq('id', eventId);
-    }
+    // Sem atualização de status na payment_events (schema atual não possui coluna de status)
   }
 }
 
@@ -275,11 +239,11 @@ async function sendWhatsAppNotification(submission: any) {
     });
 
     // Enviar via Evolution API
-    await fetch(`${whatsappConfig.api_url}/message/sendText/${whatsappConfig.instance_name}`, {
+    await fetch(`${whatsappConfig.api_base_url}/message/sendText/${whatsappConfig.instance_id}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': whatsappConfig.api_key,
+        'apikey': whatsappConfig.token,
       },
       body: JSON.stringify({
         number: phone.replace(/\D/g, ''),
@@ -294,7 +258,8 @@ async function sendWhatsAppNotification(submission: any) {
       submission_id: submission.id,
       recipient_phone: phone,
       message_content: message,
-      status: 'ENVIADO',
+      status: 'SENT',
+      sent_at: new Date().toISOString(),
     });
 
     console.log('WhatsApp notification sent successfully');
@@ -327,16 +292,15 @@ async function sendToMoodle(submission: any) {
       student_data: submission.data,
       payment_amount: submission.payment_amount,
       payment_date: submission.payment_date,
-      form_title: submission.form_definitions?.title,
     };
 
     // Enviar para n8n
-    const response = await fetch(webhookConfig.webhook_url, {
+    const response = await fetch(webhookConfig.enrollment_webhook_url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(webhookConfig.auth_token && {
-          'Authorization': `Bearer ${webhookConfig.auth_token}`,
+        ...(webhookConfig.enrollment_webhook_token && {
+          'Authorization': `Bearer ${webhookConfig.enrollment_webhook_token}`,
         }),
       },
       body: JSON.stringify(payload),
@@ -344,15 +308,19 @@ async function sendToMoodle(submission: any) {
 
     const success = response.ok;
 
-    // Registrar log
+    // Registrar log no padrão da tabela
     await supabase.from('enrollment_logs').insert({
       tenant_id: submission.tenant_id,
       submission_id: submission.id,
-      webhook_config_id: webhookConfig.id,
-      payload: payload,
-      response_status: response.status,
-      response_body: await response.text().catch(() => null),
-      success,
+      status: success ? 'DONE' : 'FAILED',
+      request_payload: payload,
+      response_payload: {
+        status: response.status,
+        body: await response.text().catch(() => null),
+      },
+      attempt_count: 1,
+      last_attempt_at: new Date().toISOString(),
+      completed_at: success ? new Date().toISOString() : null,
     });
 
     console.log('Moodle enrollment webhook sent:', success ? 'SUCCESS' : 'FAILED');
@@ -363,8 +331,10 @@ async function sendToMoodle(submission: any) {
     await supabase.from('enrollment_logs').insert({
       tenant_id: submission.tenant_id,
       submission_id: submission.id,
-      success: false,
+      status: 'FAILED',
       error_message: error instanceof Error ? error.message : 'Unknown error',
+      attempt_count: 1,
+      last_attempt_at: new Date().toISOString(),
     });
   }
 }

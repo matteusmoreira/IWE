@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 
 // GET /api/forms/[id] - Buscar formulário por ID
 export async function GET(
@@ -8,7 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -63,7 +62,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -84,7 +83,8 @@ export async function PATCH(
 
     // Parse do body
     const body = await request.json();
-    const { title, description, is_active, settings, fields } = body;
+    const { description, is_active, settings, fields, tenant_id } = body;
+    const name: string | undefined = body.name ?? body.title;
 
     // Buscar form antigo para auditoria
     const { data: oldForm } = await supabase
@@ -109,10 +109,14 @@ export async function PATCH(
     const { data: form, error: updateError } = await supabase
       .from('form_definitions')
       .update({
-        ...(title && { title }),
+        ...(name && { name }),
         ...(description !== undefined && { description }),
         ...(is_active !== undefined && { is_active }),
         ...(settings && { settings }),
+        // Permitir alterar tenant apenas para superadmin
+        ...(userData.role === 'superadmin' && body.hasOwnProperty('tenant_id')
+          ? { tenant_id: tenant_id ?? null }
+          : {}),
       })
       .eq('id', params.id)
       .select()
@@ -163,7 +167,7 @@ export async function PATCH(
       resource_id: params.id,
       changes: {
         old: oldForm,
-        new: { title, description, is_active, settings, fields_count: fields?.length },
+        new: { name, description, is_active, settings, fields_count: fields?.length },
       },
     });
 
@@ -201,7 +205,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Logo from '@/components/ui/logo';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
@@ -15,6 +16,22 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Busca o usuário via backend (/api/users/me) para contornar RLS e garantir consistência
+  const getUserFromBackend = async (accessToken?: string | null) => {
+    const res = await fetch('/api/users/me', {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    })
+    if (!res.ok) {
+      if (res.status === 404) return null
+      const payload = await res.json().catch(() => ({}))
+      throw new Error(payload?.error || 'Falha ao buscar usuário')
+    }
+    const payload = await res.json()
+    return payload?.user ?? null
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,14 +46,31 @@ export default function LoginPage() {
       if (error) throw error;
 
       if (data.user) {
-        // Buscar dados do usuário
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('auth_user_id', data.user.id)
-          .single();
+        // Garantir o registro do usuário no backend
+        const res = await fetch('/api/users/ensure', {
+          method: 'POST',
+          headers: {
+            // Não logar este header.
+            Authorization: `Bearer ${data.session?.access_token ?? ''}`,
+          },
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}))
+          throw new Error(payload?.error || 'Falha ao garantir registro de usuário')
+        }
 
-        if (userError) throw userError;
+        // Obter o usuário pelo backend, com pequenos retries para latências
+        const delays = [0, 200, 500];
+        let userData: any = null;
+        for (const d of delays) {
+          if (d) await wait(d)
+          userData = await getUserFromBackend(data.session?.access_token)
+          if (userData) break
+        }
+
+        if (!userData) {
+          throw new Error('Registro de usuário não encontrado. Tente novamente.');
+        }
 
         if (!userData.is_active) {
           toast.error('Sua conta está desativada. Entre em contato com o administrador.');
@@ -60,9 +94,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="h-16 w-16 bg-brand-primary rounded-full flex items-center justify-center">
-              <span className="text-3xl font-bold text-white">IWE</span>
-            </div>
+            <Logo size="lg" />
           </div>
           <CardTitle className="text-2xl">Bem-vindo de volta</CardTitle>
           <CardDescription>
