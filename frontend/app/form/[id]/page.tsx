@@ -339,9 +339,11 @@ export default function PublicFormPage() {
 
   // Helpers para arquivo
   const computeAccept = (fileTypes?: string[]) => {
-    if (!fileTypes || fileTypes.length === 0) return 'image/*,.pdf,.doc,.docx,.xls,.xlsx';
+    // Padrão restrito aos tipos solicitados
+    if (!fileTypes || fileTypes.length === 0) return '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp';
     const map: Record<string, string> = {
-      image: 'image/*',
+      // 'image' mapeia apenas para os formatos permitidos
+      image: '.png,.jpg,.jpeg,.webp',
       pdf: '.pdf',
       doc: '.doc',
       docx: '.docx',
@@ -351,6 +353,7 @@ export default function PublicFormPage() {
       png: '.png',
       jpg: '.jpg',
       jpeg: '.jpeg',
+      webp: '.webp',
     };
     return fileTypes.map((t) => map[t] || `.${t}`).join(',');
   };
@@ -643,6 +646,7 @@ export default function PublicFormPage() {
               maxSize={field.validation_rules?.maxFileSize ?? 10 * 1024 * 1024}
               value={formData[field.name]?.url}
               disabled={submitting}
+              showPreview={false}
               onFileSelect={(file) => uploadFile(field.name, file)}
             />
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}

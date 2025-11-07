@@ -135,31 +135,52 @@ export default function SubmissionsPage() {
     title?: string;
   }) => {
     const [href, setHref] = useState<string | null>(null);
+    const [loadingHref, setLoadingHref] = useState<boolean>(false);
 
     useEffect(() => {
       let active = true;
       (async () => {
+        setLoadingHref(true);
+        let found: string | null = null;
         try {
-          const res = await fetch(`/api/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
-          if (res.ok) {
-            const json = await res.json();
-            const u = json?.signedUrl || null;
-            if (active && u) setHref(u);
+          // 1) Tenta rota autenticada (funciona mesmo sem SERVICE ROLE, desde que usuário esteja logado)
+          const resAuth = await fetch(`/api/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
+          if (resAuth.ok) {
+            const json = await resAuth.json();
+            found = json?.signedUrl || null;
           }
         } catch {}
+        if (!found) {
+          try {
+            // 2) Fallback: rota pública usando SERVICE ROLE
+            const resPublic = await fetch(`/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
+            if (resPublic.ok) {
+              const json = await resPublic.json();
+              found = json?.signedUrl || null;
+            }
+          } catch {}
+        }
+        if (active) {
+          if (found) setHref(found);
+          setLoadingHref(false);
+        }
       })();
       return () => { active = false; };
     }, [storagePath]);
 
-    const fallback = `/api/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
-    const linkHref = href || fallback;
+    // 3) Último recurso: redireciono para as rotas (uma delas deve resolver no servidor)
+    const fallbackPublic = `/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
+    const fallbackAuth = `/api/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
+    const linkHref = href || fallbackAuth || fallbackPublic;
     return (
       <a
         href={linkHref}
         target="_blank"
         rel="noopener noreferrer"
-        className={className}
+        className={`${className ?? ''} cursor-pointer ${loadingHref ? 'opacity-80' : ''}`}
         title={title}
+        role="link"
+        tabIndex={0}
       >
         <Icon className="h-4 w-4" />
         <span className="text-sm truncate max-w-[180px]">{label}</span>
@@ -715,11 +736,11 @@ export default function SubmissionsPage() {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <Label className="text-muted-foreground">Status Pagamento</Label>
-                    <p className="mt-1">
+                    <div className="mt-1">
                       <Badge variant={getPaymentStatusColor(selectedSubmission.payment_status)}>
                         {getPaymentStatusLabel(selectedSubmission.payment_status)}
                       </Badge>
-                    </p>
+                    </div>
                   </div>
                   {selectedSubmission.payment_amount && (
                     <div>

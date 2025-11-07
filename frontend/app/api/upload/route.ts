@@ -23,10 +23,11 @@ export async function POST(request: NextRequest) {
     }
 
     const allowedTypes = [
+      // Imagens permitidas
       'image/jpeg',
       'image/png',
-      'image/gif',
       'image/webp',
+      // Documentos permitidos
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

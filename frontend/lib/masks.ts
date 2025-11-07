@@ -34,6 +34,15 @@ export function formatPhone(value: string): string {
   return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
 }
 
+// Máscara de RG: 00.000.000-0 (formato comum; pode variar por estado)
+export function formatRG(value: string): string {
+  const numbers = unmaskDigits(value).slice(0, 10);
+  if (numbers.length <= 2) return numbers;
+  if (numbers.length <= 5) return `${numbers.slice(0, 2)}.${numbers.slice(2)}`;
+  if (numbers.length <= 8) return `${numbers.slice(0, 2)}.${numbers.slice(2, 5)}.${numbers.slice(5)}`;
+  return `${numbers.slice(0, 2)}.${numbers.slice(2, 5)}.${numbers.slice(5, 8)}-${numbers.slice(8)}`;
+}
+
 // Validações simples
 export const validators = {
   cpf: (value: string) => /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(value),

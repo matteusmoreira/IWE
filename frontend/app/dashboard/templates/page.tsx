@@ -94,7 +94,7 @@ export default function TemplatesPage() {
       })
       .catch((err) => {
         console.error("Erro ao carregar templates", err);
-        toast({ title: "Erro", description: "Não foi possível carregar os templates." });
+        toast.error("Erro", { description: "Não foi possível carregar os templates." });
       })
       .finally(() => setLoading(false));
   }, []);
@@ -117,7 +117,7 @@ export default function TemplatesPage() {
         const msg = await r.text();
         throw new Error(msg);
       }
-      toast({ title: "Template criado", description: "O template foi criado com sucesso." });
+      toast.success("Template criado", { description: "O template foi criado com sucesso." });
       // reset básico
       setNewTitle("");
       setNewKey(PRESET_KEYS[0].value);
@@ -139,7 +139,7 @@ export default function TemplatesPage() {
       })));
     } catch (err: any) {
       console.error("Erro ao criar template", err);
-      toast({ title: "Erro", description: err?.message || "Falha ao criar template." });
+      toast.error("Erro", { description: err?.message || "Falha ao criar template." });
     }
   }
 
@@ -178,7 +178,7 @@ export default function TemplatesPage() {
         }),
       });
       if (!r.ok) throw new Error(await r.text());
-      toast({ title: "Template atualizado", description: "Alterações salvas com sucesso." });
+      toast.success("Template atualizado", { description: "Alterações salvas com sucesso." });
       // reload
       const refreshed = await fetch(`/api/templates`);
       const payload = await refreshed.json();
@@ -196,7 +196,7 @@ export default function TemplatesPage() {
       cancelEdit(t.id);
     } catch (err: any) {
       console.error("Erro ao atualizar template", err);
-      toast({ title: "Erro", description: err?.message || "Falha ao salvar alterações." });
+      toast.error("Erro", { description: err?.message || "Falha ao salvar alterações." });
     }
   }
 
@@ -205,7 +205,7 @@ export default function TemplatesPage() {
     try {
       const r = await fetch(`/api/templates/${t.id}`, { method: "DELETE" });
       if (!r.ok) throw new Error(await r.text());
-      toast({ title: "Template excluído", description: "O template foi removido." });
+      toast.success("Template excluído", { description: "O template foi removido." });
       // reload
       const refreshed = await fetch(`/api/templates`);
       const payload = await refreshed.json();
@@ -222,7 +222,7 @@ export default function TemplatesPage() {
       })));
     } catch (err: any) {
       console.error("Erro ao excluir template", err);
-      toast({ title: "Erro", description: err?.message || "Falha ao excluir template." });
+      toast.error("Erro", { description: err?.message || "Falha ao excluir template." });
     }
   }
 

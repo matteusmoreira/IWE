@@ -36,13 +36,14 @@ export async function POST(_req: NextRequest) {
       const channel = job.metadata?.channel || 'whatsapp';
       try {
         if (channel === 'whatsapp') {
-          // Buscar config WhatsApp
+          // Buscar configuração GLOBAL do WhatsApp (unificada)
           const { data: whatsappConfig } = await supabase
-            .from('whatsapp_configs')
+            .from('whatsapp_global_configs')
             .select('*')
-            .eq('tenant_id', job.tenant_id)
             .eq('is_active', true)
-            .single();
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
           if (!whatsappConfig) throw new Error('WhatsApp não configurado');
 
           // Montar conteúdo

@@ -11,23 +11,32 @@ interface FileUploadProps {
   maxSize?: number; // in bytes
   value?: string; // URL of uploaded file
   disabled?: boolean;
+  // Controle explícito para mostrar ou não preview de imagens
+  // Por padrão manteremos desativado para evitar previews de PDF/DOC
+  showPreview?: boolean;
 }
 
 export function FileUpload({ 
   onFileSelect, 
-  accept = 'image/*,.pdf,.doc,.docx,.xls,.xlsx',
+  // Restringe a seleção aos tipos solicitados
+  accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp',
   maxSize = 10 * 1024 * 1024, // 10MB default
   value,
-  disabled = false 
+  disabled = false,
+  showPreview = false,
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(value || null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [isImage, setIsImage] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Atualiza a pré-visualização quando o "value" (URL) muda externamente
   useEffect(() => {
     setPreview(value || null);
+    // Quando recebemos apenas a URL, não temos o MIME type.
+    // Para evitar mostrar previews indevidos (PDF/DOC), mantemos isImage = false.
+    setIsImage(false);
   }, [value]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,12 +53,14 @@ export function FileUpload({
 
     // Create preview for images
     if (file.type.startsWith('image/')) {
+      setIsImage(true);
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     } else {
+      setIsImage(false);
       setPreview(null);
     }
 
@@ -103,7 +114,7 @@ export function FileUpload({
         </div>
       ) : (
         <div className="border rounded-lg p-4">
-          {preview && preview.startsWith('data:image') ? (
+          {showPreview && isImage && preview ? (
             <div className="relative">
               <img 
                 src={preview} 

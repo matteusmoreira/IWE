@@ -61,15 +61,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
-    // Buscar config WhatsApp
+    // Buscar configuração GLOBAL do WhatsApp (unificada)
     const { data: whatsappConfig } = await supabase
-      .from('whatsapp_configs')
+      .from('whatsapp_global_configs')
       .select('*')
-      .eq('tenant_id', tenant_id)
       .eq('is_active', true)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (!whatsappConfig) {
-      return NextResponse.json({ error: 'WhatsApp não configurado para o tenant' }, { status: 400 });
+      return NextResponse.json({ error: 'WhatsApp não configurado' }, { status: 400 });
     }
 
     // Montar mensagem: template ou texto

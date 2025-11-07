@@ -23,8 +23,20 @@ export async function PATCH(
     .select('id')
     .eq('id', id)
     .single();
-
   if (fetchError || !existingConfig) {
+    const code = (fetchError as any)?.code;
+    const message = (fetchError as any)?.message;
+    const hint = (fetchError as any)?.hint;
+    if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela whatsapp_global_configs não encontrada. Execute as migrações do Supabase antes de salvar (20251107123000_global_settings.sql).',
+          hint,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: 'Configuration not found' }, { status: 404 });
   }
 
@@ -53,9 +65,21 @@ export async function PATCH(
     .eq('id', id)
     .select()
     .single();
-
   if (error) {
     console.error('Error updating WhatsApp global config:', error);
+    const code = (error as any)?.code;
+    const message = (error as any)?.message;
+    const hint = (error as any)?.hint;
+    if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela whatsapp_global_configs não encontrada. Execute as migrações do Supabase antes de salvar (20251107123000_global_settings.sql).',
+          hint,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
   }
 
@@ -92,8 +116,20 @@ export async function DELETE(
     .select('id')
     .eq('id', id)
     .single();
-
   if (fetchError || !existingConfig) {
+    const code = (fetchError as any)?.code;
+    const message = (fetchError as any)?.message;
+    const hint = (fetchError as any)?.hint;
+    if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela whatsapp_global_configs não encontrada. Execute as migrações do Supabase antes de deletar (20251107123000_global_settings.sql).',
+          hint,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: 'Configuration not found' }, { status: 404 });
   }
 
@@ -113,9 +149,21 @@ export async function DELETE(
     .from('whatsapp_global_configs')
     .delete()
     .eq('id', id);
-
   if (error) {
     console.error('Error deleting WhatsApp global config:', error);
+    const code = (error as any)?.code;
+    const message = (error as any)?.message;
+    const hint = (error as any)?.hint;
+    if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela whatsapp_global_configs não encontrada. Execute as migrações do Supabase antes de deletar (20251107123000_global_settings.sql).',
+          hint,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: 'Failed to delete configuration' }, { status: 500 });
   }
 

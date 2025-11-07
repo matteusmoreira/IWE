@@ -247,9 +247,11 @@ export default function PublicFormBySlugPage() {
 
   // Helpers de arquivo
   const computeAccept = (fileTypes?: string[]) => {
-    if (!fileTypes || fileTypes.length === 0) return 'image/*,.pdf,.doc,.docx,.xls,.xlsx';
+    // Padrão restrito aos tipos solicitados
+    if (!fileTypes || fileTypes.length === 0) return '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp';
     const map: Record<string, string> = {
-      image: 'image/*',
+      // 'image' mapeia apenas para os formatos permitidos
+      image: '.png,.jpg,.jpeg,.webp',
       pdf: '.pdf',
       doc: '.doc',
       docx: '.docx',
@@ -259,6 +261,7 @@ export default function PublicFormBySlugPage() {
       png: '.png',
       jpg: '.jpg',
       jpeg: '.jpeg',
+      webp: '.webp',
     };
     return fileTypes.map((t) => map[t] || `.${t}`).join(',');
   };
@@ -270,12 +273,11 @@ export default function PublicFormBySlugPage() {
         const current = formData[fieldName] as any;
         const storagePath = current?.storagePath;
         if (storagePath) {
-          const res = await fetch(`/api/upload?path=${encodeURIComponent(storagePath)}`, { method: 'DELETE' });
+          const res = await fetch(`/api/public/upload/delete?path=${encodeURIComponent(storagePath)}`, { method: 'DELETE' });
           if (!res.ok) {
             toast.error('Falha ao remover arquivo do storage.');
             return; // mantém o valor para tentativa futura
           }
-          // await res.json().catch(() => null); // leitura opcional
           toast.success('Arquivo removido do storage.');
         }
         // Sem storagePath, apenas limpamos localmente
@@ -296,27 +298,63 @@ export default function PublicFormBySlugPage() {
     }
 
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('fieldName', fieldName);
-      fd.append('tenantId', tenantId);
-
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        toast.error(data?.error || 'Falha no upload. Metadados locais foram salvos.');
+      // 1) Solicita URL assinada para upload (público, sem login)
+      const initRes = await fetch('/api/public/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fieldName,
+          tenantId,
+          fileName: file.name,
+          fileType: file.type,
+        }),
+      });
+      const initData = await initRes.json();
+      if (!initRes.ok || !initData?.uploadUrl || !initData?.storagePath) {
+        toast.error(initData?.error || 'Falha ao preparar upload. Metadados locais foram salvos.');
         handleFieldChange(fieldName, { name: file.name, size: file.size, type: file.type });
         return;
       }
 
-      // A API de upload retorna os metadados dentro de "file"
-      const uploaded = data.file || {};
+      const uploadUrl = initData.uploadUrl as string;
+      const storagePath = initData.storagePath as string;
+
+      // 2) Faz upload direto para a URL assinada (PUT)
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type,
+          'x-upsert': 'false',
+        },
+        body: file,
+      });
+
+      if (!putRes.ok) {
+        toast.error('Falha no upload para o storage. Metadados locais foram salvos.');
+        handleFieldChange(fieldName, { name: file.name, size: file.size, type: file.type });
+        return;
+      }
+
+      // 3) Gera URL assinada de visualização (7 dias)
+      let viewUrl: string | undefined = undefined;
+      try {
+        const viewRes = await fetch(`/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
+        const viewData = await viewRes.json();
+        if (viewRes.ok && viewData?.signedUrl) {
+          viewUrl = viewData.signedUrl as string;
+        }
+      } catch (e) {
+        // Apenas ignora; visualização pode ser carregada depois
+        console.warn('Falha ao gerar URL de visualização assinada', e);
+      }
+
+      // 4) Atualiza o campo com metadados e URL (se disponível)
       handleFieldChange(fieldName, {
-        name: uploaded.name || file.name,
-        size: uploaded.size ?? file.size,
-        type: uploaded.type || file.type,
-        url: uploaded.url,
-        storagePath: uploaded.storagePath,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: viewUrl,
+        storagePath,
       });
       toast.success('Arquivo enviado com sucesso.');
     } catch (err) {
@@ -575,6 +613,7 @@ export default function PublicFormBySlugPage() {
               maxSize={field.validation_rules?.maxFileSize ?? 10 * 1024 * 1024}
               value={formData[field.name]?.url}
               disabled={submitting}
+              showPreview={false}
               onFileSelect={(file) => uploadFile(field.name, file)}
             />
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}

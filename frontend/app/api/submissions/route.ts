@@ -73,10 +73,80 @@ export async function GET(request: NextRequest) {
       query = query.eq('payment_status', payment_status);
     }
 
-    // Busca por texto (busca nos dados JSONB)
+    // Busca por texto (nome, e-mail, telefone/whatsapp) e por IDs de aluno/submissão
     if (search) {
-      // Nota: Esta busca é simplificada. Para produção, considere usar full-text search
-      query = query.or(`data->>'email'.ilike.%${search}%,data->>'nome'.ilike.%${search}%,data->>'name'.ilike.%${search}%`);
+      const s = search.trim();
+
+      // Montar lista de clausulas OR
+      const orClauses: string[] = [
+        `data->>'email'.ilike.*${s}*`,
+        `data->>'contato_email'.ilike.*${s}*`,
+        `data->>'e-mail'.ilike.*${s}*`,
+        `data->>'nome'.ilike.*${s}*`,
+        `data->>'nome_completo'.ilike.*${s}*`,
+        `data->>'name'.ilike.*${s}*`,
+        // variações comuns de nome
+        `data->>'aluno'.ilike.*${s}*`,
+        `data->>'nome_aluno'.ilike.*${s}*`,
+        `data->>'nome_do_aluno'.ilike.*${s}*`,
+        `data->>'responsavel_nome'.ilike.*${s}*`,
+        `data->>'telefone'.ilike.*${s}*`,
+        `data->>'phone'.ilike.*${s}*`,
+        `data->>'whatsapp'.ilike.*${s}*`,
+        `data->>'celular'.ilike.*${s}*`,
+        `data->>'zap'.ilike.*${s}*`,
+      ];
+
+      // 1) Buscar por ID da submissão (UUID) quando o termo corresponde a um padrão UUID
+      const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+      if (uuidRegex.test(s)) {
+        orClauses.push(`id.eq.${s}`);
+      }
+
+      // 2) Buscar por campos de ID do aluno nos formulários
+      //    - Candidatos padrão
+      const idCandidatesDefault = [
+        'id_aluno', 'matricula', 'ra', 'student_id', 'codigo_aluno', 'registro', 'inscricao', 'id'
+      ];
+
+      //    - Descobrir dinamicamente nomes de campos que parecem IDs nos formulários
+      try {
+        const patterns = ['*id*', '*matric*', '*ra*', '*codigo*', '*registro*', '*inscr*'];
+        const { data: ff } = await supabase
+          .from('form_fields')
+          .select('name')
+          .or(patterns.map(p => `name.ilike.${p}`).join(','))
+          .limit(500);
+        const dynamicNames = Array.from(new Set((ff || []).map((r: any) => String(r.name))));
+        const idFieldNames = Array.from(new Set([...idCandidatesDefault, ...dynamicNames]));
+        for (const fieldName of idFieldNames) {
+          // Busca parcial por ID do aluno no JSON
+          orClauses.push(`data->>'${fieldName}'.ilike.*${s}*`);
+        }
+
+        // 3) Descobrir dinamicamente campos de nome/telefone para ampliar a busca
+        const namePhonePatterns = ['*nome*', '*aluno*', '*name*', '*whats*', '*zap*', '*tel*', '*fone*', '*cel*', '*telefone*', '*celular*'];
+        const { data: ff2 } = await supabase
+          .from('form_fields')
+          .select('name')
+          .or(namePhonePatterns.map(p => `name.ilike.${p}`).join(','))
+          .limit(500);
+        const namePhoneNames = Array.from(new Set((ff2 || []).map((r: any) => String(r.name))));
+        for (const fieldName of namePhoneNames) {
+          orClauses.push(`data->>'${fieldName}'.ilike.*${s}*`);
+        }
+      } catch (e) {
+        // Se não conseguir ler form_fields (RLS), usa somente candidatos padrão
+        for (const fieldName of idCandidatesDefault) {
+          orClauses.push(`data->>'${fieldName}'.ilike.*${s}*`);
+        }
+      }
+
+      // Fallback geral: busca em todo o JSON como texto
+      orClauses.push(`data::text.ilike.*${s}*`);
+
+      // Aplicar OR acumulado
+      query = query.or(orClauses.join(','));
     }
 
     const { data: submissions, error: submissionsError, count } = await query;

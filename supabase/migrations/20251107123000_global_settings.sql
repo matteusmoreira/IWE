@@ -31,23 +31,16 @@ CREATE TABLE IF NOT EXISTS public.outbound_webhook_global_configs (
 
 ALTER TABLE public.outbound_webhook_global_configs ENABLE ROW LEVEL SECURITY;
 
--- Ensure updated_at auto-update trigger exists and is applied
-DO $$
+-- Ensure updated_at auto-update function exists (idempotent)
+-- Nota: usamos CREATE OR REPLACE fora de DO $$ ... $$ para evitar erros de sintaxe
+-- em alguns ambientes e simplificar a execução de migrações.
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $func$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_proc
-    WHERE proname = 'update_updated_at_column'
-  ) THEN
-    CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-    RETURNS TRIGGER AS $$
-    BEGIN
-      NEW.updated_at = NOW();
-      RETURN NEW;
-    END;
-    $$ LANGUAGE plpgsql;
-  END IF;
-END$$;
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$func$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS set_updated_at_on_whatsapp_global ON public.whatsapp_global_configs;
 CREATE TRIGGER set_updated_at_on_whatsapp_global

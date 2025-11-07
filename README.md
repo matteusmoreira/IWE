@@ -438,3 +438,14 @@ Já está em produção automaticamente.
 ## 📝 Licença
 
 © 2025 Instituto Palavra da Fé (IWE). Todos os direitos reservados.
+## Playwright MCP: Instalador automático de revisão
+
+Para alinhar o MCP Playwright com a revisão esperada de Chromium Headless Shell (ex.: 1179), adicionamos um script que tenta instalar automaticamente a revisão correta iterando por versões do `@playwright/test`. Ele também pode detectar a revisão a partir do texto de erro do MCP (por exemplo, copiando a mensagem "Executable doesn't exist at ... chromium_headless_shell-XXXX ...").
+
+Uso:
+- Windows PowerShell:
+  - `powershell -ExecutionPolicy Bypass -File scripts\install-playwright-revision.ps1 -Revision 1179`
+  - Opcional: `-ClearPartial` para remover caches de outras revisões.
+  - Detecção automática: `powershell -ExecutionPolicy Bypass -File scripts\install-playwright-revision.ps1 -ErrorTextFile path\para\erro.txt`
+
+O script verifica `%LOCALAPPDATA%\ms-playwright\chromium_headless_shell-<revisão>\chrome-win\headless_shell.exe` e para quando encontrar.

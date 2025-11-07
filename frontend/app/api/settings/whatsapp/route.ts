@@ -32,7 +32,22 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ config: null });
+    // Tornar o erro mais explícito quando a tabela não existe (migração não aplicada)
+    const code = (error as any)?.code;
+    const message = (error as any)?.message;
+    const hint = (error as any)?.hint;
+    if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+      return NextResponse.json(
+        {
+          config: null,
+          error:
+            'Tabela whatsapp_global_configs ausente no banco. Aplique as migrações do Supabase (20251107123000_global_settings.sql).',
+          hint,
+        },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ config: null, error: 'Falha ao buscar configuração global.' }, { status: 500 });
   }
 
   return NextResponse.json({ config });
@@ -115,6 +130,19 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) {
       console.error('Error updating WhatsApp global config:', error);
+      const code = (error as any)?.code;
+      const message = (error as any)?.message;
+      const hint = (error as any)?.hint;
+      if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+        return NextResponse.json(
+          {
+            error:
+              'Tabela whatsapp_global_configs não encontrada. Execute as migrações do Supabase antes de salvar (20251107123000_global_settings.sql).',
+            hint,
+          },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
     }
     config = updated;
@@ -126,6 +154,19 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) {
       console.error('Error creating WhatsApp global config:', error);
+      const code = (error as any)?.code;
+      const message = (error as any)?.message;
+      const hint = (error as any)?.hint;
+      if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
+        return NextResponse.json(
+          {
+            error:
+              'Tabela whatsapp_global_configs não encontrada. Execute as migrações do Supabase antes de salvar (20251107123000_global_settings.sql).',
+            hint,
+          },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: 'Failed to create configuration' }, { status: 500 });
     }
     config = created;
