@@ -17,10 +17,10 @@ export async function PATCH(
   const body = await request.json();
   const { instance_name, instance_id, api_url, api_base_url, api_key, token, default_sender, is_active } = body;
 
-  // Verificar se a config existe e se o admin tem permissão
+  // Verificar se a config GLOBAL existe e se tem permissão
   const { data: existingConfig, error: fetchError } = await supabase
-    .from('whatsapp_configs')
-    .select('tenant_id')
+    .from('whatsapp_global_configs')
+    .select('id')
     .eq('id', id)
     .single();
 
@@ -28,7 +28,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Configuration not found' }, { status: 404 });
   }
 
-  // Verificar permissão: superadmin tem acesso global, admin precisa ser do tenant
+  // Permissão: apenas superadmin pode alterar config global
   const { data: roleRow } = await supabase
     .from('users')
     .select('id, role')
@@ -36,11 +36,7 @@ export async function PATCH(
     .single();
 
   if (roleRow?.role !== 'superadmin') {
-    const { data: isAdmin } = await supabase
-      .rpc('is_admin_of_tenant', { tenant_uuid: existingConfig.tenant_id });
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Atualizar configuração
@@ -52,23 +48,23 @@ export async function PATCH(
   if (is_active !== undefined) updateData.is_active = is_active;
 
   const { data: config, error } = await supabase
-    .from('whatsapp_configs')
+    .from('whatsapp_global_configs')
     .update(updateData)
     .eq('id', id)
     .select()
     .single();
 
   if (error) {
-    console.error('Error updating WhatsApp config:', error);
+    console.error('Error updating WhatsApp global config:', error);
     return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
   }
 
   // Audit log
   await supabase.from('audit_logs').insert({
     user_id: roleRow?.id ?? null,
-    tenant_id: existingConfig.tenant_id,
+    tenant_id: null,
     action: 'UPDATE',
-    resource_type: 'whatsapp_config',
+    resource_type: 'whatsapp_global_config',
     resource_id: id,
     changes: { updated_by_auth_user_id: user.id },
   });
@@ -90,10 +86,10 @@ export async function DELETE(
 
   const { id } = await context.params;
 
-  // Verificar se a config existe e se o admin tem permissão
+  // Verificar se a config GLOBAL existe e se tem permissão
   const { data: existingConfig, error: fetchError } = await supabase
-    .from('whatsapp_configs')
-    .select('tenant_id')
+    .from('whatsapp_global_configs')
+    .select('id')
     .eq('id', id)
     .single();
 
@@ -101,7 +97,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Configuration not found' }, { status: 404 });
   }
 
-  // Verificar permissão: superadmin tem acesso global, admin precisa ser do tenant
+  // Permissão: apenas superadmin pode deletar config global
   const { data: roleRowDel } = await supabase
     .from('users')
     .select('id, role')
@@ -109,30 +105,26 @@ export async function DELETE(
     .single();
 
   if (roleRowDel?.role !== 'superadmin') {
-    const { data: isAdminDel } = await supabase
-      .rpc('is_admin_of_tenant', { tenant_uuid: existingConfig.tenant_id });
-    if (!isAdminDel) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Deletar configuração
   const { error } = await supabase
-    .from('whatsapp_configs')
+    .from('whatsapp_global_configs')
     .delete()
     .eq('id', id);
 
   if (error) {
-    console.error('Error deleting WhatsApp config:', error);
+    console.error('Error deleting WhatsApp global config:', error);
     return NextResponse.json({ error: 'Failed to delete configuration' }, { status: 500 });
   }
 
   // Audit log
   await supabase.from('audit_logs').insert({
     user_id: roleRowDel?.id ?? null,
-    tenant_id: existingConfig.tenant_id,
+    tenant_id: null,
     action: 'DELETE',
-    resource_type: 'whatsapp_config',
+    resource_type: 'whatsapp_global_config',
     resource_id: id,
     changes: { deleted_by_auth_user_id: user.id },
   });

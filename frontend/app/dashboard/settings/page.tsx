@@ -14,18 +14,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [tenants, setTenants] = useState<any[]>([]);
-  const [selectedTenant, setSelectedTenant] = useState('');
   const [role, setRole] = useState<'superadmin' | 'admin' | 'user' | ''>('');
 
   // Mercado Pago
-  const [mpConfig, setMpConfig] = useState({
-    id: '',
-    access_token: '',
-    public_key: '',
-    webhook_secret: '',
-    is_sandbox: false,
-    is_active: true,
-  });
+  // Status do Mercado Pago via variáveis de ambiente
+  const [mpStatus, setMpStatus] = useState<any>(null);
 
   // WhatsApp
   const [whatsappConfig, setWhatsappConfig] = useState({
@@ -48,13 +41,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchTenants();
+    fetchConfigurations();
   }, []);
 
   useEffect(() => {
-    if (selectedTenant) {
-      fetchConfigurations();
-    }
-  }, [selectedTenant, activeTab]);
+    fetchConfigurations();
+  }, [activeTab]);
 
   const fetchTenants = async () => {
     try {
@@ -70,9 +62,7 @@ export default function SettingsPage() {
             setActiveTab('whatsapp');
           }
         }
-        if (data.tenants?.length > 0) {
-          setSelectedTenant(data.tenants[0].id);
-        }
+        // Sem dependência de tenant para configurações globais
       }
     } catch (error) {
       console.error('Error fetching tenants:', error);
@@ -82,29 +72,19 @@ export default function SettingsPage() {
   };
 
   const fetchConfigurations = async () => {
-    if (!selectedTenant) return;
-
     try {
       setLoading(true);
 
       if (activeTab === 'mercadopago') {
-        const response = await fetch(`/api/settings/mercadopago?tenant_id=${selectedTenant}`);
+        const response = await fetch('/api/integration/mercadopago/status');
         const data = await response.json();
-        if (response.ok && data.config) {
-          setMpConfig(data.config);
+        if (response.ok) {
+          setMpStatus(data);
         } else {
-          // Reset to defaults
-          setMpConfig({
-            id: '',
-            access_token: '',
-            public_key: '',
-            webhook_secret: '',
-            is_sandbox: false,
-            is_active: true,
-          });
+          setMpStatus(null);
         }
       } else if (activeTab === 'whatsapp') {
-        const response = await fetch(`/api/settings/whatsapp?tenant_id=${selectedTenant}`);
+        const response = await fetch('/api/settings/whatsapp');
         const data = await response.json();
         if (response.ok && data.config) {
           // Mapear campos do backend (instance_id/api_base_url/token) para os inputs da UI
@@ -125,10 +105,17 @@ export default function SettingsPage() {
           });
         }
       } else if (activeTab === 'n8n') {
-        const response = await fetch(`/api/settings/n8n?tenant_id=${selectedTenant}`);
+        const response = await fetch('/api/settings/n8n');
         const data = await response.json();
         if (response.ok && data.config) {
-          setN8nConfig(data.config);
+          setN8nConfig({
+            id: data.config.id || '',
+            webhook_url: data.config.enrollment_webhook_url || '',
+            auth_token: data.config.enrollment_webhook_token || '',
+            timeout_seconds: Math.round((data.config.timeout_ms ?? 30000) / 1000),
+            max_retries: data.config.retries ?? 3,
+            is_active: data.config.is_active !== false,
+          });
         } else {
           setN8nConfig({
             id: '',
@@ -147,38 +134,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveMercadoPago = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-
-    try {
-      const method = mpConfig.id ? 'PATCH' : 'POST';
-      const url = mpConfig.id
-        ? `/api/settings/mercadopago/${mpConfig.id}`
-        : '/api/settings/mercadopago';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id: selectedTenant,
-          ...mpConfig,
-        }),
-      });
-
-      if (response.ok) {
-        toast.success('Configuração do Mercado Pago salva com sucesso!');
-        fetchConfigurations();
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Erro ao salvar configuração');
-      }
-    } catch (error) {
-      toast.error('Erro ao salvar configuração');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // Mercado Pago agora é baseado em variáveis de ambiente; não há formulário de salvamento
 
   const handleSaveWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,7 +150,6 @@ export default function SettingsPage() {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenant_id: selectedTenant,
           ...whatsappConfig,
         }),
       });
@@ -227,7 +182,6 @@ export default function SettingsPage() {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenant_id: selectedTenant,
           ...n8nConfig,
         }),
       });
@@ -255,7 +209,7 @@ export default function SettingsPage() {
         { id: 'n8n', label: 'n8n/Moodle', icon: Webhook },
       ];
 
-  if (loading && !selectedTenant) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-brand-primary" />
@@ -274,28 +228,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Seleção de Polo */}
-      {role !== 'admin' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Polo</CardTitle>
-            <CardDescription>Selecione o polo para configurar</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <select
-              value={selectedTenant}
-              onChange={(e) => setSelectedTenant(e.target.value)}
-              className="w-full max-w-md px-3 py-2 text-sm border rounded-md"
-            >
-              {tenants.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.name}
-                </option>
-              ))}
-            </select>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Tabs */}
       {tabs.length > 1 && (
@@ -323,80 +255,53 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>Configuração do Mercado Pago</CardTitle>
             <CardDescription>
-              Configure as credenciais da sua conta Mercado Pago para processar pagamentos
+              Integração baseada em variáveis de ambiente. Consulte o status abaixo.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSaveMercadoPago} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="access_token">Access Token *</Label>
-                <Input
-                  id="access_token"
-                  type="password"
-                  value={mpConfig.access_token}
-                  onChange={(e) => setMpConfig({ ...mpConfig, access_token: e.target.value })}
-                  placeholder="APP_USR-..."
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Token de acesso da sua aplicação Mercado Pago
-                </p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 border rounded">
+                  <div className="flex items-center justify-between">
+                    <span>Access Token (MP_ACCESS_TOKEN)</span>
+                    <Badge variant={mpStatus?.has_mp_access_token ? 'default' : 'destructive'}>
+                      {mpStatus?.has_mp_access_token ? 'Configurado' : 'Faltando'}
+                    </Badge>
+                  </div>
+                  {mpStatus?.masked_mp_access_token && (
+                    <code className="mt-2 block text-xs bg-white dark:bg-gray-800 p-2 rounded">
+                      {mpStatus.masked_mp_access_token}
+                    </code>
+                  )}
+                </div>
+                <div className="p-4 border rounded">
+                  <div className="flex items-center justify-between">
+                    <span>APP_URL</span>
+                    <Badge variant={mpStatus?.has_app_url ? 'default' : 'destructive'}>
+                      {mpStatus?.has_app_url ? 'Configurado' : 'Faltando'}
+                    </Badge>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="public_key">Public Key (opcional)</Label>
-                <Input
-                  id="public_key"
-                  value={mpConfig.public_key}
-                  onChange={(e) => setMpConfig({ ...mpConfig, public_key: e.target.value })}
-                  placeholder="APP_USR-..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Chave pública para checkout transparente
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="webhook_secret">Webhook Secret (opcional)</Label>
-                <Input
-                  id="webhook_secret"
-                  type="password"
-                  value={mpConfig.webhook_secret}
-                  onChange={(e) => setMpConfig({ ...mpConfig, webhook_secret: e.target.value })}
-                  placeholder="Secret para validar webhooks"
-                />
-              </div>
-
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={mpConfig.is_sandbox}
-                    onChange={(e) => setMpConfig({ ...mpConfig, is_sandbox: e.target.checked })}
-                  />
-                  <span>Modo Sandbox (Testes)</span>
-                </label>
-
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={mpConfig.is_active}
-                    onChange={(e) => setMpConfig({ ...mpConfig, is_active: e.target.checked })}
-                  />
-                  <span>Ativo</span>
-                </label>
-              </div>
-
-              <div className="pt-4">
-                <Button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-brand-primary hover:bg-brand-primary/90"
-                >
-                  {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  <Save className="mr-2 h-4 w-4" />
-                  Salvar Configuração
-                </Button>
+              <div className="p-4 border rounded">
+                <div className="flex items-center justify-between">
+                  <span>Teste de Preferência</span>
+                  <Badge variant={mpStatus?.preference_test?.ok ? 'default' : 'destructive'}>
+                    {mpStatus?.preference_test?.ok ? 'Token válido' : 'Falhou'}
+                  </Badge>
+                </div>
+                {!mpStatus?.preference_test?.ok && mpStatus?.preference_test?.error && (
+                  <p className="mt-2 text-xs text-muted-foreground">Erro: {mpStatus.preference_test.error}</p>
+                )}
+                <div className="pt-4">
+                  <Button
+                    onClick={() => fetchConfigurations()}
+                    className="bg-brand-primary hover:bg-brand-primary/90"
+                  >
+                    Re-testar
+                  </Button>
+                </div>
               </div>
 
               <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-md">
@@ -405,10 +310,11 @@ export default function SettingsPage() {
                   {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/mercadopago
                 </code>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Configure esta URL nas notificações IPN do Mercado Pago
+                  Configure esta URL nas notificações IPN do Mercado Pago.
+                  Credenciais agora devem ser definidas em .env: MP_ACCESS_TOKEN e APP_URL.
                 </p>
               </div>
-            </form>
+            </div>
           </CardContent>
         </Card>
       )}

@@ -187,13 +187,14 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
 // Função auxiliar para enviar WhatsApp
 async function sendWhatsAppNotification(submission: any) {
   try {
-    // Buscar configuração WhatsApp
+    // Buscar configuração WhatsApp GLOBAL
     const { data: whatsappConfig } = await supabase
-      .from('whatsapp_configs')
+      .from('whatsapp_global_configs')
       .select('*')
-      .eq('tenant_id', submission.tenant_id)
       .eq('is_active', true)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (!whatsappConfig) {
       console.log('WhatsApp not configured for tenant:', submission.tenant_id);
@@ -366,11 +367,12 @@ async function sendToMoodle(submission: any) {
   try {
     // Buscar configuração webhook
     const { data: webhookConfig } = await supabase
-      .from('outbound_webhook_configs')
+      .from('outbound_webhook_global_configs')
       .select('*')
-      .eq('tenant_id', submission.tenant_id)
       .eq('is_active', true)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (!webhookConfig) {
       console.log('Webhook not configured for tenant:', submission.tenant_id);

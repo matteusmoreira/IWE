@@ -10,34 +10,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const tenant_id = searchParams.get('tenant_id');
-
-  if (!tenant_id) {
-    return NextResponse.json({ error: 'tenant_id is required' }, { status: 400 });
-  }
-
-  // Verificar permissão: superadmin tem acesso global, admin precisa ser do tenant
+  // Permissão: admin e superadmin podem visualizar configuração global
   const { data: roleRow } = await supabase
     .from('users')
     .select('id, role')
     .eq('auth_user_id', user.id)
     .single();
 
-  if (roleRow?.role !== 'superadmin') {
-    const { data: isAdmin } = await supabase
-      .rpc('is_admin_of_tenant', { tenant_uuid: tenant_id });
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  if (roleRow?.role !== 'admin' && roleRow?.role !== 'superadmin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Buscar configuração (usar tabela oficial outbound_webhook_configs)
+  // Buscar configuração GLOBAL
   const { data: config, error } = await supabase
-    .from('outbound_webhook_configs')
+    .from('outbound_webhook_global_configs')
     .select('*')
-    .eq('tenant_id', tenant_id)
-    .single();
+    .eq('is_active', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ config: null });
@@ -57,7 +48,6 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
   const {
-    tenant_id,
     webhook_url,
     auth_token,
     timeout_seconds,
@@ -67,11 +57,11 @@ export async function POST(request: NextRequest) {
     is_active,
   } = body;
 
-  if (!tenant_id || !webhook_url) {
-    return NextResponse.json({ error: 'tenant_id and webhook_url are required' }, { status: 400 });
+  if (!webhook_url) {
+    return NextResponse.json({ error: 'webhook_url is required' }, { status: 400 });
   }
 
-  // Verificar permissão: superadmin tem acesso global, admin precisa ser do tenant
+  // Permissão: apenas superadmin pode escrever configuração global
   const { data: roleRowPost } = await supabase
     .from('users')
     .select('id, role')
@@ -79,14 +69,10 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (roleRowPost?.role !== 'superadmin') {
-    const { data: isAdmin } = await supabase
-      .rpc('is_admin_of_tenant', { tenant_uuid: tenant_id });
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Criar configuração na tabela outbound_webhook_configs
+  // Upsert configuração GLOBAL na tabela outbound_webhook_global_configs
   const timeoutCalculated =
     typeof timeout_ms === 'number'
       ? timeout_ms
@@ -94,30 +80,55 @@ export async function POST(request: NextRequest) {
         ? timeout_seconds * 1000
         : 30000; // default 30s
 
-  const { data: config, error } = await supabase
-    .from('outbound_webhook_configs')
-    .insert({
-      tenant_id,
-      enrollment_webhook_url: webhook_url,
-      enrollment_webhook_token: auth_token || null,
-      timeout_ms: timeoutCalculated,
-      retries: typeof retries === 'number' ? retries : (typeof max_retries === 'number' ? max_retries : 3),
-      is_active: is_active !== false,
-    })
-    .select()
-    .single();
+  const { data: existing } = await supabase
+    .from('outbound_webhook_global_configs')
+    .select('id')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (error) {
-    console.error('Error creating n8n config:', error);
-    return NextResponse.json({ error: 'Failed to create configuration' }, { status: 500 });
+  const payload = {
+    enrollment_webhook_url: webhook_url,
+    enrollment_webhook_token: auth_token || null,
+    timeout_ms: timeoutCalculated,
+    retries: typeof retries === 'number' ? retries : (typeof max_retries === 'number' ? max_retries : 3),
+    is_active: is_active !== false,
+  };
+
+  let config: any = null;
+  if (existing?.id) {
+    const { data: updated, error } = await supabase
+      .from('outbound_webhook_global_configs')
+      .update(payload)
+      .eq('id', existing.id)
+      .select()
+      .single();
+    if (error) {
+      console.error('Error updating n8n global config:', error);
+      return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
+    }
+    config = updated;
+  } else {
+    const { data: created, error } = await supabase
+      .from('outbound_webhook_global_configs')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) {
+      console.error('Error creating n8n global config:', error);
+      return NextResponse.json({ error: 'Failed to create configuration' }, { status: 500 });
+    }
+    config = created;
   }
+
+  // sucesso
 
   // Audit log
   await supabase.from('audit_logs').insert({
     user_id: roleRowPost?.id ?? null,
-    tenant_id,
+    tenant_id: null,
     action: 'CREATE',
-    resource_type: 'outbound_webhook_config',
+    resource_type: 'outbound_webhook_global_config',
     resource_id: config.id,
     changes: { created_by_auth_user_id: user.id },
   });
