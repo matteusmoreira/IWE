@@ -232,7 +232,20 @@ export default function PublicFormPage() {
             window.location.href = paymentData.init_point;
             return;
           } else {
-            setError('Erro ao processar pagamento. Tente novamente.');
+            // Exibir mensagem detalhada vinda do backend quando disponível
+            const composedMsg = (() => {
+              const base = paymentData?.error || 'Erro ao processar pagamento. Tente novamente.';
+              const reason = paymentData?.reason ? ` (${paymentData.reason})` : '';
+              const detail = paymentData?.detail ? `: ${paymentData.detail}` : '';
+              // Info extra útil para dev (não expõe segredos)
+              const meta = paymentData?.meta?.blocked_by || paymentData?.meta?.code
+                ? ` [${[paymentData?.meta?.code, paymentData?.meta?.blocked_by].filter(Boolean).join(' - ')}]`
+                : '';
+              return `${base}${reason}${detail}${meta}`;
+            })();
+
+            console.error('Payment preference error:', paymentData);
+            setError(composedMsg);
             setSubmitting(false);
             return;
           }
@@ -587,7 +600,7 @@ export default function PublicFormPage() {
           <CardHeader>
             {/* Logo centralizada no topo */}
             <div className="flex justify-center mb-4">
-              <Image src="/logo.png" alt="Logo IWE" width={64} height={64} className="rounded-full" />
+        <Image src="/logo.png" alt="Logo IWE" width={64} height={64} className="rounded-full" style={{ height: 'auto', width: 'auto' }} />
             </div>
             {form?.tenants?.name && (
               <p className="text-center text-sm text-muted-foreground">{form.tenants.name}</p>

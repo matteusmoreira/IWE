@@ -40,6 +40,24 @@ export default function DashboardLayout({
     if (isDark) {
       document.documentElement.classList.add('dark');
     }
+
+    // Fallback para erro de chunk em navegação (ex.: ChunkLoadError)
+    // Se ocorrer falha ao carregar algum bundle, forçamos um reload limpo.
+    const onWindowError = (e: ErrorEvent) => {
+      const msg = String(e.message || e.error || '');
+      if (msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) {
+        // Evita loop: usa reload completo sem cache
+        // Observação: isso não corrige a causa raiz, mas evita travar o usuário.
+        console.warn('Detecção de ChunkLoadError, recarregando a página...');
+        // Pequeno atraso para permitir logs e evitar race com HMR
+        setTimeout(() => {
+          // Força recarregar do servidor
+          location.reload();
+        }, 100);
+      }
+    };
+    window.addEventListener('error', onWindowError);
+    return () => window.removeEventListener('error', onWindowError);
   }, []);
 
   const checkAuth = async () => {
@@ -80,6 +98,8 @@ export default function DashboardLayout({
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
     { icon: Users, label: 'Polos', href: '/dashboard/tenants' },
+    // Status de Integração (MP) — visível para admin e superadmin
+    ...(user?.role === 'admin' || user?.role === 'superadmin' ? [{ icon: MessageCircle /* placeholder icon */, label: 'Status Integração', href: '/dashboard/status-integracao' }] : []),
     // Remover "Admins" para admins; manter para superadmin
     ...(user?.role === 'superadmin' ? [{ icon: Shield, label: 'Admins', href: '/dashboard/admins' }] : []),
     // Remover "Formulários" para admins; manter para superadmin

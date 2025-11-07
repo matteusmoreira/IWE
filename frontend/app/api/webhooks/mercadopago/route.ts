@@ -94,21 +94,14 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
       return;
     }
 
-    // Buscar config do Mercado Pago do tenant
-    const { data: mpConfig } = await supabase
-      .from('mercadopago_configs')
-      .select('*')
-      .eq('tenant_id', submission.tenant_id)
-      .eq('is_active', true)
-      .single();
-
-    if (!mpConfig) {
-      console.error('Mercado Pago config not found for tenant:', submission.tenant_id);
-      
+    // Pagamento global: usar token de ambiente (MP_ACCESS_TOKEN)
+    const accessToken = process.env.MP_ACCESS_TOKEN;
+    if (!accessToken || accessToken.trim() === '') {
+      console.error('MP_ACCESS_TOKEN não configurado para processamento de webhook');
       if (eventId) {
         await supabase
           .from('payment_events')
-          .update({ status: 'ERRO', error_message: 'MP config not found' })
+          .update({ status: 'ERRO', error_message: 'MP_ACCESS_TOKEN não configurado' })
           .eq('id', eventId);
       }
       return;
@@ -117,7 +110,7 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
     // Buscar detalhes do pagamento na API do Mercado Pago
     const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: {
-        'Authorization': `Bearer ${mpConfig.access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
       },
     });
 

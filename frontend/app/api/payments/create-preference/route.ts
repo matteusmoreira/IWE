@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getAppUrl, getPreferenceClient } from '@/lib/mercadopago';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Usamos o client ADMIN para bypass de RLS no backend.
+// Isso evita 404 por "submissão não encontrada" quando a política RLS bloqueia leitura com chave ANON.
+const supabase = createAdminClient();
 
 // POST /api/payments/create-preference - Criar preferência de pagamento no Mercado Pago
 export async function POST(request: NextRequest) {
@@ -14,12 +14,12 @@ export async function POST(request: NextRequest) {
 
     if (!submission_id) {
       return NextResponse.json(
-        { error: 'submission_id é obrigatório' },
+        { error: 'submission_id é obrigatório', reason: 'MISSING_SUBMISSION_ID' },
         { status: 400 }
       );
     }
 
-    // Buscar submissão
+    // Buscar submissão (bypass RLS com Service Role)
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .select(`
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     if (submissionError || !submission) {
       return NextResponse.json(
-        { error: 'Submissão não encontrada' },
+        { error: 'Submissão não encontrada', reason: 'SUBMISSION_NOT_FOUND' },
         { status: 404 }
       );
     }
@@ -48,23 +48,17 @@ export async function POST(request: NextRequest) {
     // Verificar se já tem pagamento pendente
     if (submission.payment_status !== 'PENDENTE') {
       return NextResponse.json(
-        { error: 'Esta submissão não está pendente de pagamento' },
+        { error: 'Esta submissão não está pendente de pagamento', reason: 'NOT_PENDING' },
         { status: 400 }
       );
     }
 
-    // Buscar configuração do Mercado Pago do tenant
-    const { data: mpConfig, error: configError } = await supabase
-      .from('mercadopago_configs')
-      .select('*')
-      .eq('tenant_id', submission.tenant_id)
-      .eq('is_active', true)
-      .single();
-
-    if (configError || !mpConfig) {
+    // Pagamento global: usamos o token de ambiente (MP_ACCESS_TOKEN) e não mais configuração por tenant.
+    // Validação antecipada para evitar erro genérico mais adiante.
+    if (!process.env.MP_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN.trim() === '') {
       return NextResponse.json(
-        { error: 'Mercado Pago não configurado para este polo' },
-        { status: 400 }
+        { error: 'MP_ACCESS_TOKEN não configurado', reason: 'NO_GLOBAL_MP_TOKEN' },
+        { status: 500 }
       );
     }
 
@@ -73,7 +67,7 @@ export async function POST(request: NextRequest) {
     
     if (amount <= 0) {
       return NextResponse.json(
-        { error: 'Valor do pagamento inválido' },
+        { error: 'Valor do pagamento inválido', reason: 'INVALID_AMOUNT' },
         { status: 400 }
       );
     }
@@ -83,12 +77,25 @@ export async function POST(request: NextRequest) {
     const payerEmail = submission.data.email || 'sem-email@example.com';
     const payerPhone = submission.data.telefone || submission.data.phone || '';
 
-    // Criar preferência no Mercado Pago
-    const preferenceData = {
+    // Criar preferência no Mercado Pago (global)
+    // Base URL da aplicação (preferir APP_URL do servidor; cair para NEXT_PUBLIC_APP_URL se necessário)
+    let appUrl: string;
+    try {
+      appUrl = getAppUrl();
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: 'APP_URL/NEXT_PUBLIC_APP_URL não configurado', reason: 'APP_URL_NOT_CONFIGURED', detail: String(e?.message || e) },
+        { status: 500 }
+      );
+    }
+
+    const descriptor = (process.env.MP_STATEMENT_DESCRIPTOR || 'IWE').substring(0, 22);
+    const isHttpsPublic = appUrl.startsWith('https://');
+    const preferencePayload = {
       items: [
         {
           title: submission.form_definitions.name,
-          description: `Inscrição - ${submission.tenants.name}`,
+          description: `Inscrição`,
           quantity: 1,
           unit_price: amount,
           currency_id: 'BRL',
@@ -102,32 +109,34 @@ export async function POST(request: NextRequest) {
         },
       },
       back_urls: {
-        success: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?submission_id=${submission_id}`,
-        failure: `${process.env.NEXT_PUBLIC_APP_URL}/payment/failure?submission_id=${submission_id}`,
-        pending: `${process.env.NEXT_PUBLIC_APP_URL}/payment/pending?submission_id=${submission_id}`,
+        success: `${appUrl}/form/pagamento/sucesso?submission_id=${submission_id}`,
+        failure: `${appUrl}/form/pagamento/falha?submission_id=${submission_id}`,
+        pending: `${appUrl}/form/pagamento/pendente?submission_id=${submission_id}`,
       },
-      auto_return: 'approved',
+      // Evitar erro 400 em ambientes locais com http
+      ...(isHttpsPublic ? { auto_return: 'approved' as const } : {}),
       external_reference: submission_id,
-      notification_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/mercadopago`,
-      statement_descriptor: submission.tenants.name.substring(0, 22),
+      notification_url: `${appUrl}/api/webhooks/mercadopago`,
+      statement_descriptor: descriptor,
+      binary_mode: true,
     };
 
-    // Fazer request para Mercado Pago
-    const mpResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mpConfig.access_token}`,
-      },
-      body: JSON.stringify(preferenceData),
-    });
-
-    const mpData = await mpResponse.json();
-
-    if (!mpResponse.ok) {
-      console.error('Mercado Pago error:', mpData);
+    // Usar SDK oficial com token global
+    const preferenceClient = getPreferenceClient();
+    let mpData: any;
+    try {
+      const result = await preferenceClient.create({ body: preferencePayload as any });
+      mpData = result;
+    } catch (sdkError: any) {
+      console.error('Mercado Pago error (SDK):', sdkError);
+      const detail = sdkError?.message || sdkError?.error || String(sdkError);
+      const meta = {
+        status: sdkError?.status,
+        code: sdkError?.code,
+        blocked_by: sdkError?.blocked_by,
+      };
       return NextResponse.json(
-        { error: 'Erro ao criar preferência de pagamento' },
+        { error: 'Erro ao criar preferência de pagamento', reason: 'MP_PREFERENCE_ERROR', detail, meta },
         { status: 500 }
       );
     }
@@ -156,7 +165,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error creating payment preference:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar pagamento' },
+      { error: 'Erro ao processar pagamento', reason: 'UNEXPECTED_ERROR', detail: String(error?.message || error) },
       { status: 500 }
     );
   }

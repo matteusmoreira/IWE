@@ -213,6 +213,46 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Verificação de duplicidade: Nome + CPF
+    // - Identifica dinamicamente os campos de nome e cpf do formulário
+    // - Bloqueia nova submissão quando já existir registro com mesmo CPF
+    //   (e opcionalmente mesmo nome) em qualquer formulário do sistema.
+    const cpfField = (form.form_fields || []).find((f: any) => f.type === 'cpf')?.name;
+    const nameField = (form.form_fields || [])
+      .find((f: any) => {
+        const n = (f.name || '').toLowerCase();
+        return ['nome_completo', 'nome', 'name'].includes(n);
+      })?.name;
+
+    const cpfValueRaw = cpfField ? formData[cpfField] : null;
+    const nameValueRaw = nameField ? formData[nameField] : null;
+
+    if (cpfValueRaw) {
+      // Busca por CPF exatamente igual (formato mascarado). Como o frontend aplica máscara,
+      // isso evita falsos negativos por diferenças de formatação.
+      // Se também houver nome, exige ambos para reduzir falso-positivo em casos raros.
+      let dupQuery = admin
+        .from('submissions')
+        .select('id')
+        .eq(`data->>${cpfField}`, cpfValueRaw)
+        .limit(1);
+
+      if (nameValueRaw) {
+        dupQuery = dupQuery.eq(`data->>${nameField}`, nameValueRaw);
+      }
+
+      const { data: dup, error: dupError } = await dupQuery;
+      if (dupError) {
+        console.error('Erro ao verificar duplicidade:', dupError);
+        // Prossegue sem bloquear se houver erro de verificação
+      } else if (dup && dup.length > 0) {
+        return NextResponse.json(
+          { error: 'Aluno já cadastrado no sistema!' },
+          { status: 409 }
+        );
+      }
+    }
+
     // Capturar informações da requisição
     // Extrair primeiro IP válido
     const forwardedFor = request.headers.get('x-forwarded-for') || '';
@@ -234,6 +274,10 @@ export async function POST(request: NextRequest) {
         data: formData,
         // Definir status de pagamento apenas quando aplicável (evita enum inválido)
         ...(form.settings?.require_payment ? { payment_status: 'PENDENTE' } : {}),
+        // Persistir o valor previsto do pagamento na submissão para métricas e consistência
+        ...(form.settings?.require_payment
+          ? { payment_amount: Number(form.settings?.payment_amount ?? 0) }
+          : {}),
         ip_address: ip,
         user_agent: userAgent,
         metadata: {

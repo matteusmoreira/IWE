@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Form as FormType, FormField } from '@/lib/form-field-types';
+import { formatPhone, formatCEP, formatCPF } from '@/lib/masks';
 
 export default function PublicFormBySlugPage() {
   const params = useParams();
@@ -72,6 +73,15 @@ export default function PublicFormBySlugPage() {
       setError('Erro ao carregar formulário');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Formatar valor em BRL
+  const formatBRL = (value: number) => {
+    try {
+      return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    } catch {
+      return `R$ ${Number(value).toFixed(2)}`;
     }
   };
 
@@ -177,7 +187,19 @@ export default function PublicFormBySlugPage() {
             window.location.href = paymentData.init_point;
             return;
           } else {
-            setError('Erro ao processar pagamento. Tente novamente.');
+            // Exibir mensagem detalhada vinda do backend quando disponível
+            const composedMsg = (() => {
+              const base = paymentData?.error || 'Erro ao processar pagamento. Tente novamente.';
+              const reason = paymentData?.reason ? ` (${paymentData.reason})` : '';
+              const detail = paymentData?.detail ? `: ${paymentData.detail}` : '';
+              const meta = paymentData?.meta?.blocked_by || paymentData?.meta?.code
+                ? ` [${[paymentData?.meta?.code, paymentData?.meta?.blocked_by].filter(Boolean).join(' - ')}]`
+                : '';
+              return `${base}${reason}${detail}${meta}`;
+            })();
+
+            console.error('Payment preference error:', paymentData);
+            setError(composedMsg);
             setSubmitting(false);
             return;
           }
@@ -202,26 +224,7 @@ export default function PublicFormBySlugPage() {
     }
   };
 
-  // Função para aplicar máscara de telefone
-  const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 2) {
-      return numbers;
-    }
-    if (numbers.length <= 7) {
-      return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
-    }
-    return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
-  };
-
-  // Função para aplicar máscara de CEP
-  const formatCEP = (value: string) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 5) {
-      return numbers;
-    }
-    return `${numbers.slice(0, 5)}-${numbers.slice(5, 8)}`;
-  };
+  // Máscaras centralizadas em '@/lib/masks'
 
   // Função para buscar endereço pelo CEP
   const fetchAddressByCEP = async (cep: string) => {
@@ -347,6 +350,29 @@ export default function PublicFormBySlugPage() {
               className={fieldError ? 'border-red-500' : ''}
               required={field.required}
               maxLength={9}
+            />
+            {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
+          </div>
+        );
+      case 'cpf':
+        return (
+          <div key={field.id} id={`field-${field.name}`} className="space-y-2">
+            <Label htmlFor={field.name}>
+              {field.label}
+              {field.required && <span className="text-red-500 ml-1">*</span>}
+            </Label>
+            <Input
+              id={field.name}
+              type="text"
+              placeholder={field.placeholder || '000.000.000-00'}
+              value={formData[field.name] || ''}
+              onChange={(e) => {
+                const formatted = formatCPF(e.target.value);
+                handleFieldChange(field.name, formatted);
+              }}
+              className={fieldError ? 'border-red-500' : ''}
+              required={field.required}
+              maxLength={14}
             />
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
           </div>
@@ -528,7 +554,7 @@ export default function PublicFormBySlugPage() {
           <CardHeader>
             {/* Logo centralizada no topo */}
             <div className="flex justify-center mb-4">
-              <Image src="/logo.png" alt="Logo IWE" width={64} height={64} className="rounded-full" />
+        <Image src="/logo.png" alt="Logo IWE" width={64} height={64} className="rounded-full" style={{ height: 'auto', width: 'auto' }} />
             </div>
             {form?.tenants?.name && (
               <p className="text-center text-sm text-muted-foreground">{form.tenants.name}</p>
@@ -542,6 +568,15 @@ export default function PublicFormBySlugPage() {
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
                 <p className="text-red-600">{error}</p>
+              </div>
+            )}
+
+            {form?.settings?.require_payment && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-yellow-800">
+                  Este formulário possui taxa de {formatBRL(Number(form?.settings?.payment_amount ?? 0))}.
+                  Você será redirecionado para o pagamento após o envio.
+                </p>
               </div>
             )}
 

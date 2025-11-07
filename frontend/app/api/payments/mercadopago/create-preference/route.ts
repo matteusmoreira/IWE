@@ -39,8 +39,11 @@ export async function POST(req: NextRequest) {
       failure: `${appUrl}/form/pagamento/falha`,
       pending: `${appUrl}/form/pagamento/pendente`,
     };
+    // Alguns ambientes (localhost/http) podem causar erro 400 com auto_return.
+    // Só definimos auto_return quando a URL for pública (https).
+    const isHttpsPublic = appUrl.startsWith('https://');
 
-    const notification_url = `${appUrl}/api/payments/mercadopago/webhook`;
+    const notification_url = `${appUrl}/api/webhooks/mercadopago`;
 
     const created = await preference.create({
       body: {
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
         },
         external_reference: body.external_reference,
         back_urls,
-        auto_return: 'approved',
+        ...(isHttpsPublic ? { auto_return: 'approved' as const } : {}),
         binary_mode: true,
         notification_url,
       },
@@ -70,9 +73,18 @@ export async function POST(req: NextRequest) {
     );
   } catch (err: any) {
     console.error('[MP:create-preference] erro:', err?.message || err);
-    return new Response(JSON.stringify({ error: 'Falha ao criar preferência' }), {
-      status: 500,
-      headers: { 'content-type': 'application/json' },
-    });
+    const detail = err?.message || err?.error || String(err);
+    const meta = {
+      status: err?.status,
+      code: err?.code,
+      blocked_by: err?.blocked_by,
+    };
+    return new Response(
+      JSON.stringify({ error: 'Falha ao criar preferência', detail, meta }),
+      {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      }
+    );
   }
 }

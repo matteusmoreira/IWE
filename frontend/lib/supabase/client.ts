@@ -18,7 +18,7 @@ export type Database = {
           role: 'superadmin' | 'admin' | 'user';
           is_active: boolean;
           avatar_url: string | null;
-          metadata: any;
+          metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -29,7 +29,7 @@ export type Database = {
           name: string;
           slug: string;
           status: boolean;
-          settings: any;
+          settings: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -39,7 +39,7 @@ export type Database = {
           id: string;
           tenant_id: string;
           form_definition_id: string;
-          data: any;
+          data: Record<string, unknown>;
           polo: string | null;
           payment_status: 'PENDENTE' | 'PAGO' | 'CANCELADO' | 'REEMBOLSADO';
           payment_provider: 'mercadopago' | 'manual';
@@ -47,7 +47,7 @@ export type Database = {
           payment_external_id: string | null;
           payment_amount: number | null;
           payment_date: string | null;
-          metadata: any;
+          metadata: Record<string, unknown>;
           ip_address: string | null;
           user_agent: string | null;
           created_at: string;
@@ -63,7 +63,7 @@ export type Database = {
           description: string | null;
           redirect_url_after_flow: string | null;
           is_active: boolean;
-          settings: any;
+          settings: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };

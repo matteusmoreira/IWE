@@ -45,8 +45,11 @@ export function slugify(text: string): string {
     .replace(/--+/g, '-');
 }
 
-export function parseTemplateVariables(template: string, data: Record<string, any>): string {
+// Substituir 'any' por 'unknown' para atender @typescript-eslint/no-explicit-any
+export function parseTemplateVariables(template: string, data: Record<string, unknown>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-    return data[key] !== undefined ? String(data[key]) : match;
+    return (data as Record<string, unknown>)[key] !== undefined
+      ? String((data as Record<string, unknown>)[key])
+      : match;
   });
 }
