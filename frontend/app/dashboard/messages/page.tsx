@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatDisplayLabel, formatDisplayValueByKey } from "@/lib/utils";
 
 type Tenant = { id: string; name: string; slug: string };
 type Template = { id: string; key: string; title: string; content: string; is_active: boolean };
@@ -235,14 +235,25 @@ export default function MessagesPage() {
             <Label>Buscar alunos</Label>
             <Input placeholder="Nome, e-mail ou telefone" value={search} onChange={(e) => setSearch(e.target.value)} className="mt-1" />
             <div className="max-h-56 overflow-auto mt-2 border rounded">
-              {submissions.map(s => (
-                <label key={s.id} className="flex items-center gap-2 p-2 border-b">
-                  <input type="checkbox" checked={selectedSubmissionIds.includes(s.id)} onChange={(e) => {
-                    setSelectedSubmissionIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id));
-                  }} />
-                  <span className="text-sm">{s?.data?.nome_completo || s?.data?.nome || s?.data?.name || "Aluno"} - {s?.data?.email || s?.data?.contato_email || s?.data?.["e-mail"] || s?.data?.telefone || s?.data?.phone || ""}</span>
-                </label>
-              ))}
+              {submissions.map(s => {
+                const buildPreview = (data: any): string => {
+                  const prioritize = ["nome_completo","nome","name","whatsapp","telefone","phone","email","contato_email","e-mail"]; 
+                  const keys = Array.from(new Set([...prioritize, ...Object.keys(data || {})]));
+                  const pairs = keys
+                    .filter(k => data && data[k] != null && String(data[k]).trim() !== "")
+                    .slice(0, 2)
+                    .map(k => `${formatDisplayLabel(k)}: ${formatDisplayValueByKey(k, data[k])}`);
+                  return pairs.join(" • ") || "Aluno";
+                };
+                return (
+                  <label key={s.id} className="flex items-center gap-2 p-2 border-b">
+                    <input type="checkbox" checked={selectedSubmissionIds.includes(s.id)} onChange={(e) => {
+                      setSelectedSubmissionIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id));
+                    }} />
+                    <span className="text-sm">{buildPreview(s?.data)}</span>
+                  </label>
+                )
+              })}
             </div>
           </div>
           <div>

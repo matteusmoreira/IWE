@@ -79,6 +79,18 @@ Opções de aplicação:
      - `supabase db dump --schema storage > supabase/schema_storage.sql`
   3) Reinicie o servidor (`npm run dev`) e valide a criação de formulário com campo `cep`.
 
+#### Correção: normalização de opções (strings → objetos)
+- Problema: opções de `select/radio/checkbox` salvas como strings faziam a UI não exibir o texto (`option.label`).
+- Solução: aplicar a migração `supabase/migrations/20251107170013_field_options_normalization.sql`, que converte todas as opções para o formato `{ label, value }` e cria a função `slugify_label` para gerar valores limpos.
+- Passos:
+  1) Execute a migração no Supabase (SQL Editor) ou via CLI:
+     - CLI local: `supabase start && supabase migration up`
+  2) Consultas de verificação (opcionais):
+     - `SELECT count(*) FROM form_fields WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(options) e WHERE jsonb_typeof(e) = 'string');`
+     - `SELECT id, type, options FROM form_fields WHERE type IN ('select','radio','checkbox') LIMIT 10;`
+  3) Reinicie o servidor (`npm run dev`) e valide os formulários públicos. As opções devem aparecer corretamente.
+
+
 ### 2.4 E-mails transacionais (Resend)
 
 Para habilitar envio de e-mails transacionais, configure as variáveis no `frontend/.env.local` (não commitar valores reais):

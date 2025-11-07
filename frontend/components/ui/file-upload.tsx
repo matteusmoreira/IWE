@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Upload, X, File as FileIcon, Loader2 } from 'lucide-react';
 import { Button } from './button';
 import { toast } from 'sonner';
@@ -24,6 +24,11 @@ export function FileUpload({
   const [preview, setPreview] = useState<string | null>(value || null);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Atualiza a pré-visualização quando o "value" (URL) muda externamente
+  useEffect(() => {
+    setPreview(value || null);
+  }, [value]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

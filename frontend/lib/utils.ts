@@ -53,3 +53,84 @@ export function parseTemplateVariables(template: string, data: Record<string, un
       : match;
   });
 }
+
+// -----------------------------
+// Utilidades de exibição (labels/valores)
+// -----------------------------
+
+// Converte texto para "Title Case" respeitando espaços
+export function toTitleCase(text: string): string {
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : ''))
+    .join(' ');
+}
+
+// Normaliza labels vindos com underscore (ex: "anos_metodista" -> "Anos Metodista")
+export function formatDisplayLabel(key: string): string {
+  const spaced = key.replace(/_/g, ' ').trim();
+  return toTitleCase(spaced);
+}
+
+// Detecta padrão de data ISO simples (YYYY-MM-DD)
+function isIsoDateYYYYMMDD(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+// Normaliza valores para exibição:
+// - booleano -> "Verdadeiro/Falso"
+// - strings com underscore -> substitui por espaço e aplica Title Case
+// - datas no formato YYYY-MM-DD -> DD/MM/AAAA
+// - arrays -> itens separados por vírgula aplicando a mesma regra
+export function formatDisplayValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((v) => formatDisplayValue(v)).join(', ');
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Verdadeiro' : 'Falso';
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    // Trata strings booleanas
+    if (trimmed.toLowerCase() === 'true') return 'Verdadeiro';
+    if (trimmed.toLowerCase() === 'false') return 'Falso';
+
+    // Data ISO simples
+    if (isIsoDateYYYYMMDD(trimmed)) {
+      // Usa Intl para garantir locale BR
+      return formatDate(trimmed);
+    }
+
+    // Substitui underscores e aplica Title Case
+    return toTitleCase(trimmed.replace(/_/g, ' '));
+  }
+
+  // Fallback
+  return value != null ? String(value) : '';
+}
+
+// Aplica regras especiais baseadas no nome do campo
+export function formatDisplayValueByKey(key: string, value: unknown): string {
+  const k = (key || '').toLowerCase();
+  const isPhone = ['whatsapp', 'telefone', 'phone', 'celular'].some((p) => k.includes(p));
+  if (isPhone) {
+    if (typeof value === 'string') return formatPhone(value);
+    return formatDisplayValue(value);
+  }
+  // Especial: campo "anos_metodista" deve manter exatamente o texto informado no formulário
+  if (k.includes('anos_metodista')) {
+    if (typeof value === 'string') {
+      // Apenas substitui underscores por espaço, sem Title Case
+      return value.replace(/_/g, ' ').trim();
+    }
+    return formatDisplayValue(value);
+  }
+  return formatDisplayValue(value);
+}

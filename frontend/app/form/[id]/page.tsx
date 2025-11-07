@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Form as FormType, FormField } from '@/lib/form-field-types';
+import { formatCEP, validators } from '@/lib/masks';
+import { FileUpload } from '@/components/ui/file-upload';
+import { toast } from 'sonner';
 
 export default function PublicFormPage() {
   const params = useParams();
@@ -67,7 +70,13 @@ export default function PublicFormPage() {
         // Inicializar formData com valores vazios
         const initialData: Record<string, any> = {};
         data.form.form_fields?.forEach((field: FormField) => {
-          initialData[field.name] = field.type === 'checkbox' ? [] : '';
+          if (field.type === 'checkbox') {
+            initialData[field.name] = [];
+          } else if (field.type === 'accept') {
+            initialData[field.name] = false;
+          } else {
+            initialData[field.name] = '';
+          }
         });
         setFormData(initialData);
       } else {
@@ -82,7 +91,15 @@ export default function PublicFormPage() {
   };
 
   const validateField = (field: FormField, value: any): string | null => {
-    // Campo obrigatório
+    // Regras específicas para campo de aceite (checkbox único)
+    if (field.type === 'accept') {
+      if (field.required && value !== true) {
+        return 'Você precisa marcar o aceite para continuar';
+      }
+      return null;
+    }
+
+    // Campo obrigatório (genérico)
     if (field.required && (!value || value === '' || (Array.isArray(value) && value.length === 0))) {
       return 'Este campo é obrigatório';
     }
@@ -108,11 +125,11 @@ export default function PublicFormPage() {
       }
     }
 
-    // Validação de CEP (máscara)
+    // Validação de CEP (regex centralizada)
     if (field.type === 'cep') {
-      const sanitized = String(value || '').replace(/\D/g, '');
-      if (sanitized.length !== 8) {
-        return 'CEP inválido (8 dígitos)';
+      const v = String(value || '');
+      if (!validators.cep(v)) {
+        return 'CEP inválido (use o formato 00000-000)';
       }
     }
 
@@ -318,39 +335,102 @@ export default function PublicFormPage() {
     if (rev !== parseInt(cpf.charAt(10))) return false;
     return true;
   };
+  // formatCEP agora é importado de '@/lib/masks'
 
-  const formatCEP = (digits: string) => {
-    const v = digits.replace(/\D/g, '').slice(0, 8);
-    const p1 = v.slice(0, 5);
-    const p2 = v.slice(5, 8);
-    if (v.length <= 5) return p1;
-    return `${p1}-${p2}`;
+  // Helpers para arquivo
+  const computeAccept = (fileTypes?: string[]) => {
+    if (!fileTypes || fileTypes.length === 0) return 'image/*,.pdf,.doc,.docx,.xls,.xlsx';
+    const map: Record<string, string> = {
+      image: 'image/*',
+      pdf: '.pdf',
+      doc: '.doc',
+      docx: '.docx',
+      xls: '.xls',
+      xlsx: '.xlsx',
+      csv: '.csv',
+      png: '.png',
+      jpg: '.jpg',
+      jpeg: '.jpeg',
+    };
+    return fileTypes.map((t) => map[t] || `.${t}`).join(',');
   };
 
-  const fillAddressFromCEP = (cepDigits: string) => {
-    const sanitized = cepDigits.replace(/\D/g, '');
-    if (sanitized.length !== 8) return;
-    fetch(`https://viacep.com.br/ws/${sanitized}/json/`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && !data.erro) {
-          // Mapear campos se existirem no formulário
-          const updates: Record<string, any> = {};
-          if ('logradouro' in (formData || {})) updates['logradouro'] = data.logradouro || '';
-          if ('endereco' in (formData || {})) updates['endereco'] = data.logradouro || '';
-          if ('bairro' in (formData || {})) updates['bairro'] = data.bairro || '';
-          if ('localidade' in (formData || {})) updates['localidade'] = data.localidade || '';
-          if ('cidade' in (formData || {})) updates['cidade'] = data.localidade || '';
-          if ('uf' in (formData || {})) updates['uf'] = data.uf || '';
-          if ('estado' in (formData || {})) updates['estado'] = data.uf || '';
-          if (Object.keys(updates).length > 0) {
-            setFormData({ ...formData, ...updates });
+  const uploadFile = async (fieldName: string, file: File | null) => {
+    // Remoção: se o usuário clicar em remover, tentamos apagar do storage antes de limpar o campo
+    if (!file) {
+      try {
+        const current = formData[fieldName] as any;
+        const storagePath = current?.storagePath;
+        if (storagePath) {
+          const res = await fetch(`/api/upload?path=${encodeURIComponent(storagePath)}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const msg = 'Falha ao remover arquivo do storage.';
+            toast.error(msg);
+            return; // mantém o valor para o usuário tentar novamente
           }
+          // Se a API retornar body, opcionalmente poderíamos lê-lo:
+          // await res.json().catch(() => null);
+          toast.success('Arquivo removido do storage.');
         }
-      })
-      .catch(() => {
-        // Silenciar erros de CEP
+        // Sem storagePath, apenas limpa localmente
+        handleFieldChange(fieldName, '');
+      } catch (err) {
+        console.error('Delete error', err);
+        toast.error('Erro ao remover arquivo do storage.');
+        return; // mantém o valor atual
+      }
+      return;
+    }
+
+    const tenantId = selectedTenant || form?.tenant_id || form?.tenants?.id;
+    if (!tenantId) {
+      toast.error('Selecione um polo antes de enviar o arquivo.');
+      // Mesmo sem upload, ainda armazenamos metadados locais
+      handleFieldChange(fieldName, {
+        name: file.name,
+        size: file.size,
+        type: file.type,
       });
+      return;
+    }
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('fieldName', fieldName);
+      fd.append('tenantId', tenantId);
+
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok || !data?.success || !data?.file) {
+        const msg = data?.error || 'Falha no upload. Salvamos apenas os metadados localmente.';
+        toast.error(msg);
+        handleFieldChange(fieldName, {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
+        return;
+      }
+
+      // Persistir metadados + URL/storagePath
+      handleFieldChange(fieldName, {
+        name: data.file.name || file.name,
+        size: data.file.size ?? file.size,
+        type: data.file.type || file.type,
+        url: data.file.url,
+        storagePath: data.file.storagePath,
+      });
+      toast.success('Arquivo enviado com sucesso.');
+    } catch (err) {
+      console.error('Upload error', err);
+      toast.error('Erro ao enviar arquivo. Metadados locais foram mantidos.');
+      handleFieldChange(fieldName, {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+    }
   };
 
   const renderField = (field: FormField) => {
@@ -393,11 +473,6 @@ export default function PublicFormPage() {
                 if (field.type === 'cep') {
                   const masked = formatCEP(raw);
                   handleFieldChange(field.name, masked);
-                  // Quando completar 8 dígitos, buscar endereço
-                  const digits = raw.replace(/\D/g, '');
-                  if (digits.length === 8) {
-                    fillAddressFromCEP(digits);
-                  }
                   return;
                 }
                 // Padrão
@@ -463,11 +538,15 @@ export default function PublicFormPage() {
               required={field.required}
             >
               <option value="">{field.placeholder || 'Selecione uma opção'}</option>
-              {field.options?.map((option, idx) => (
-                <option key={idx} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {field.options?.map((option, idx) => {
+                const optLabel = typeof option === 'string' ? option : option.label;
+                const optValue = typeof option === 'string' ? option : option.value;
+                return (
+                  <option key={idx} value={optValue}>
+                    {optLabel}
+                  </option>
+                );
+              })}
             </select>
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
           </div>
@@ -481,19 +560,23 @@ export default function PublicFormPage() {
               {field.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <div className="space-y-2">
-              {field.options?.map((option, idx) => (
-                <label key={idx} className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name={field.name}
-                    value={option.value}
-                    checked={formData[field.name] === option.value}
-                    onChange={(e) => handleFieldChange(field.name, e.target.value)}
-                    required={field.required}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
+              {field.options?.map((option, idx) => {
+                const optLabel = typeof option === 'string' ? option : option.label;
+                const optValue = typeof option === 'string' ? option : option.value;
+                return (
+                  <label key={idx} className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={field.name}
+                      value={optValue}
+                      checked={formData[field.name] === optValue}
+                      onChange={(e) => handleFieldChange(field.name, e.target.value)}
+                      required={field.required}
+                    />
+                    <span>{optLabel}</span>
+                  </label>
+                );
+              })}
             </div>
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
           </div>
@@ -507,18 +590,43 @@ export default function PublicFormPage() {
               {field.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <div className="space-y-2">
-              {field.options?.map((option, idx) => (
-                <label key={idx} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    value={option.value}
-                    checked={(formData[field.name] || []).includes(option.value)}
-                    onChange={(e) => handleCheckboxChange(field.name, option.value, e.target.checked)}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
+              {field.options?.map((option, idx) => {
+                const optLabel = typeof option === 'string' ? option : option.label;
+                const optValue = typeof option === 'string' ? option : option.value;
+                return (
+                  <label key={idx} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      value={optValue}
+                      checked={(formData[field.name] || []).includes(optValue)}
+                      onChange={(e) => handleCheckboxChange(field.name, optValue, e.target.checked)}
+                    />
+                    <span>{optLabel}</span>
+                  </label>
+                );
+              })}
             </div>
+            {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
+          </div>
+        );
+
+      case 'accept':
+        return (
+          <div key={field.id} id={`field-${field.name}`} className="space-y-1">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={Boolean(formData[field.name])}
+                onChange={(e) => handleFieldChange(field.name, e.target.checked)}
+              />
+              <span>
+                {field.label}
+                {field.required && <span className="text-red-500 ml-1">*</span>}
+              </span>
+            </label>
+            {field.placeholder && (
+              <p className="text-xs text-muted-foreground">{field.placeholder}</p>
+            )}
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
           </div>
         );
@@ -530,22 +638,16 @@ export default function PublicFormPage() {
               {field.label}
               {field.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
-            <Input
-              id={field.name}
-              type="file"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  handleFieldChange(field.name, file.name);
-                  // TODO: Implementar upload real
-                }
-              }}
-              className={fieldError ? 'border-red-500' : ''}
-              required={field.required}
+            <FileUpload
+              accept={computeAccept(field.validation_rules?.fileTypes)}
+              maxSize={field.validation_rules?.maxFileSize ?? 10 * 1024 * 1024}
+              value={formData[field.name]?.url}
+              disabled={submitting}
+              onFileSelect={(file) => uploadFile(field.name, file)}
             />
             {fieldError && <p className="text-sm text-red-500">{fieldError}</p>}
             <p className="text-xs text-muted-foreground">
-              Upload de arquivos será implementado em breve
+              Nós enviamos o arquivo ao selecionar. Caso falhe, salvamos os metadados (nome, tipo e tamanho) e você pode tentar novamente.
             </p>
           </div>
         );

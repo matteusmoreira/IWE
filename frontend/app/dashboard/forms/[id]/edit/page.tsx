@@ -86,8 +86,29 @@ export default function EditFormPage() {
         const paymentAmt = form.settings?.payment_amount ?? null;
         setRequiresPayment(Boolean(requirePayment));
         setPaymentAmount(paymentAmt != null ? String(paymentAmt) : '');
-        // Carregar campos corretos (form_fields)
-        setFields(form.form_fields || []);
+        // Carregar campos corretos (form_fields) normalizando opções
+        const normalizeOptions = (opts: any, type: string) => {
+          if (!opts) return [];
+          if (!Array.isArray(opts)) return [];
+          // Garantir que sempre seja [{label, value}] para tipos com opções
+          if (['select', 'radio', 'checkbox'].includes(type)) {
+            return opts.map((o: any) => {
+              if (typeof o === 'string') {
+                // Gera value a partir do label
+                return { label: o, value: generateFieldName(o) };
+              }
+              // Já é objeto
+              return o;
+            });
+          }
+          return opts;
+        };
+
+        const normalizedFields = (form.form_fields || []).map((f: any) => ({
+          ...f,
+          options: normalizeOptions(f.options, f.type),
+        }));
+        setFields(normalizedFields);
       } else {
         toast.error('Formulário não encontrado');
         router.push('/dashboard/forms');
@@ -152,6 +173,8 @@ export default function EditFormPage() {
   const deleteField = (index: number) => {
     if (confirm('Tem certeza que deseja excluir este campo?')) {
       const updatedFields = fields.filter((_, i) => i !== index);
+      // Reindexar order_index após remover
+      updatedFields.forEach((f, i) => { f.order_index = i; });
       setFields(updatedFields);
       if (editingFieldIndex === index) {
         setEditingFieldIndex(null);
@@ -166,6 +189,8 @@ export default function EditFormPage() {
 
     const updatedFields = [...fields];
     [updatedFields[index], updatedFields[newIndex]] = [updatedFields[newIndex], updatedFields[index]];
+    // Atualizar order_index conforme nova ordem
+    updatedFields.forEach((f, i) => { f.order_index = i; });
     setFields(updatedFields);
   };
 
@@ -509,22 +534,27 @@ export default function EditFormPage() {
                   <div className="space-y-2">
                     <Label>Opções</Label>
                     <div className="space-y-2">
-                      {(fieldEditorData.options || []).map((option, i) => (
+                      {(fieldEditorData.options || []).map((option: any, i) => (
                         <div key={i} className="flex gap-2">
                           <Input
-                            value={option}
+                            value={option?.label || ''}
                             onChange={(e) => {
+                              const label = e.target.value;
                               const newOptions = [...(fieldEditorData.options || [])];
-                              newOptions[i] = e.target.value;
+                              newOptions[i] = {
+                                label,
+                                value: generateFieldName(label),
+                              };
                               setFieldEditorData({ ...fieldEditorData, options: newOptions });
                             }}
+                            placeholder="Label da opção"
                           />
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              const newOptions = (fieldEditorData.options || []).filter((_, idx) => idx !== i);
+                              const newOptions = (fieldEditorData.options || []).filter((_: any, idx: number) => idx !== i);
                               setFieldEditorData({ ...fieldEditorData, options: newOptions });
                             }}
                           >
@@ -539,7 +569,7 @@ export default function EditFormPage() {
                         onClick={() => {
                           setFieldEditorData({
                             ...fieldEditorData,
-                            options: [...(fieldEditorData.options || []), ''],
+                            options: [...(fieldEditorData.options || []), { label: '', value: '' }],
                           });
                         }}
                       >

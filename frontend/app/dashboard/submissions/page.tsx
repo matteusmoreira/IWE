@@ -22,9 +22,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, Trash2, Loader2, Search, Download, Filter } from 'lucide-react';
+import { Eye, Trash2, Loader2, Search, Download, Filter, File as FileIcon, FileText, FileImage, FileSpreadsheet, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatDisplayLabel, formatDisplayValue, formatDisplayValueByKey, formatPhone } from '@/lib/utils';
 
 interface Submission {
   id: string;
@@ -43,6 +43,12 @@ interface Submission {
   };
 }
 
+interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export default function SubmissionsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [total, setTotal] = useState(0);
@@ -52,14 +58,191 @@ export default function SubmissionsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingSubmission, setDeletingSubmission] = useState<Submission | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showDocumentColumn, setShowDocumentColumn] = useState(true);
+
+  // Helpers locais para metadados de arquivo
+  type FileMeta = { name: string; size?: number; type?: string; url?: string; storagePath?: string };
+
+  const isFileMeta = (v: any): v is FileMeta => {
+    return v && typeof v === 'object' && 'name' in v && (('type' in v) || ('size' in v));
+  };
+
+  const getExtension = (name?: string) => {
+    if (!name) return '';
+    const parts = name.split('.');
+    return parts.length > 1 ? parts.pop()!.toLowerCase() : '';
+  };
+
+  const detectFileType = (meta?: FileMeta) => {
+    const mime = meta?.type?.toLowerCase() || '';
+    const ext = getExtension(meta?.name);
+    if (mime.includes('pdf') || ext === 'pdf') return 'pdf';
+    if (mime.includes('image/') || ['png','jpg','jpeg','gif','webp'].includes(ext)) return 'image';
+    if (mime.includes('sheet') || ['xls','xlsx','csv'].includes(ext)) return 'xls';
+    if (mime.includes('word') || ['doc','docx'].includes(ext)) return 'doc';
+    return 'other';
+  };
+
+  const formatBytes = (bytes?: number) => {
+    if (!bytes || bytes <= 0) return '-';
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const value = bytes / Math.pow(1024, i);
+    return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${sizes[i]}`;
+  };
+
+  const pickIcon = (type: string) => {
+    switch (type) {
+      case 'pdf':
+        return FileText;
+      case 'doc':
+        return FileText;
+      case 'image':
+        return FileImage;
+      case 'xls':
+        return FileSpreadsheet;
+      default:
+        return FileIcon;
+    }
+  };
+
+  const findFirstFileMeta = (data: Record<string, any>): FileMeta | null => {
+    for (const key of Object.keys(data || {})) {
+      const val = data[key];
+      if (isFileMeta(val)) return val as FileMeta;
+      // Caso alguns projetos salvem como array
+      if (Array.isArray(val)) {
+        const first = val.find((v) => isFileMeta(v));
+        if (first) return first as FileMeta;
+      }
+    }
+    return null;
+  };
+
+  // Componente que resolve Signed URL e exibe href com domínio do Supabase
+  type IconType = React.ComponentType<{ className?: string }>;
+  const DocumentAnchor = ({
+    storagePath,
+    label,
+    Icon,
+    className,
+    title,
+  }: {
+    storagePath: string;
+    label: string;
+    Icon: IconType;
+    className?: string;
+    title?: string;
+  }) => {
+    const [href, setHref] = useState<string | null>(null);
+
+    useEffect(() => {
+      let active = true;
+      (async () => {
+        try {
+          const res = await fetch(`/api/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
+          if (res.ok) {
+            const json = await res.json();
+            const u = json?.signedUrl || null;
+            if (active && u) setHref(u);
+          }
+        } catch {}
+      })();
+      return () => { active = false; };
+    }, [storagePath]);
+
+    const fallback = `/api/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
+    const linkHref = href || fallback;
+    return (
+      <a
+        href={linkHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+        title={title}
+      >
+        <Icon className="h-4 w-4" />
+        <span className="text-sm truncate max-w-[180px]">{label}</span>
+      </a>
+    );
+  };
+
+  // Busca a primeira string que pareça uma URL de arquivo (registros antigos sem metadados)
+  const findFirstFileUrlString = (data: Record<string, any>): string | null => {
+    const isUrl = (s: any) => typeof s === 'string' && /^https?:\/\//.test(s);
+    for (const key of Object.keys(data || {})) {
+      const val = data[key];
+      if (isUrl(val)) return String(val);
+      if (Array.isArray(val)) {
+        const first = val.find((v) => isUrl(v));
+        if (first) return String(first);
+      }
+    }
+    return null;
+  };
+
+  // Detecta nome do aluno considerando variações de chave
+  const findStudentName = (data: Record<string, any>): string => {
+    const candidatesExact = ['nome_completo', 'nome', 'name', 'aluno', 'student_name'];
+    for (const k of candidatesExact) {
+      if (data?.[k]) return String(data[k]);
+    }
+    // Fallback: busca por chaves que contenham "nome" ou "aluno"
+    for (const key of Object.keys(data || {})) {
+      const lk = key.toLowerCase();
+      if ((lk.includes('nome') || lk.includes('aluno') || lk.includes('name')) && typeof data[key] === 'string' && data[key].trim()) {
+        return String(data[key]).trim();
+      }
+    }
+    return '';
+  };
+
+  // Detecta whatsapp/telefone considerando variações
+  const findWhatsapp = (data: Record<string, any>): string => {
+    const candidatesExact = ['whatsapp', 'telefone', 'phone', 'celular', 'telefone_whatsapp'];
+    for (const k of candidatesExact) {
+      if (data?.[k]) return String(data[k]);
+    }
+    // Fallback: busca por chaves relacionadas
+    for (const key of Object.keys(data || {})) {
+      const lk = key.toLowerCase();
+      if ((lk.includes('whats') || lk.includes('zap') || lk.includes('tel') || lk.includes('cel')) && typeof data[key] === 'string' && data[key].trim()) {
+        return String(data[key]).trim();
+      }
+    }
+    return '';
+  };
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [role, setRole] = useState<'superadmin' | 'admin' | 'user' | ''>('');
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>('');
+
+  // Carregar dados do usuário e polos (apenas para superadmin)
+  useEffect(() => {
+    const loadUserAndTenants = async () => {
+      try {
+        const res = await fetch('/api/users/me');
+        const data = await res.json();
+        const userRole = data?.user?.role ?? '';
+        setRole(userRole);
+        if (userRole === 'superadmin') {
+          const tRes = await fetch('/api/tenants');
+          const tData = await tRes.json();
+          if (tRes.ok) setTenants(tData?.tenants || []);
+        }
+      } catch (err) {
+        console.warn('Não foi possível carregar usuário/tenants', err);
+      }
+    };
+    loadUserAndTenants();
+  }, []);
 
   useEffect(() => {
     fetchSubmissions();
-  }, [searchTerm, paymentStatusFilter]);
+  }, [searchTerm, paymentStatusFilter, selectedTenantId]);
 
   const fetchSubmissions = async () => {
     try {
@@ -68,6 +251,7 @@ export default function SubmissionsPage() {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter);
+      if (selectedTenantId) params.append('tenant_id', selectedTenantId);
       // Evitar retorno em cache e garantir atualização pós-exclusão
       params.append('_ts', String(Date.now()));
 
@@ -128,7 +312,7 @@ export default function SubmissionsPage() {
     }
   };
 
-  const exportToCSV = () => {
+  const exportToXLS = () => {
     if (submissions.length === 0) {
       toast.error('Nenhuma submissão para exportar');
       return;
@@ -140,46 +324,64 @@ export default function SubmissionsPage() {
       Object.keys(sub.data).forEach((key) => allFields.add(key));
     });
 
-    // Cabeçalhos
+    // Cabeçalhos da planilha (sem coluna de ID)
     const headers = [
-      'ID',
       'Polo',
       'Formulário',
-      ...Array.from(allFields),
+      'Nome Completo',
+      'Whatsapp',
+      ...Array.from(allFields).map((f) => formatDisplayLabel(f)),
       'Status Pagamento',
       'Valor',
       'Data Submissão',
     ];
 
-    // Linhas
-    const rows = submissions.map((sub) => {
-      const row = [
-        sub.id,
+    const escapeHtml = (str: any) => String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const rowsHtml = submissions.map((sub) => {
+      const nomeCompleto = findStudentName(sub.data);
+      const whatsapp = findWhatsapp(sub.data);
+      const cells = [
         sub.tenants.name,
         sub.form_definitions.name,
+        nomeCompleto,
+        whatsapp ? formatDisplayValueByKey('whatsapp', whatsapp) : '',
         ...Array.from(allFields).map((field) => {
           const value = sub.data[field];
-          if (Array.isArray(value)) return value.join(', ');
-          return value || '';
+          return formatDisplayValueByKey(field, value ?? '');
         }),
-        sub.payment_status,
-        sub.payment_amount || '',
+        getPaymentStatusLabel(sub.payment_status),
+        sub.payment_amount != null ? sub.payment_amount : '',
         formatDate(sub.created_at),
       ];
-      return row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',');
-    });
+      return `<tr>${cells.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`;
+    }).join('');
 
-    // Criar CSV
-    const csv = [headers.map((h) => `"${h}"`).join(','), ...rows].join('\\n');
+    const tableHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8" />
+        </head>
+        <body>
+          <table border="1">
+            <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </body>
+      </html>`;
 
-    // Download
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `submissions_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `submissions_${new Date().toISOString().split('T')[0]}.xls`;
     link.click();
 
-    toast.success('CSV exportado com sucesso!');
+    toast.success('XLS exportado com sucesso!');
   };
 
   const getPaymentStatusColor = (status: string) => {
@@ -218,12 +420,12 @@ export default function SubmissionsPage() {
           <p className="text-muted-foreground">Gerencie as inscrições e submissões de formulários</p>
         </div>
         <Button
-          onClick={exportToCSV}
+          onClick={exportToXLS}
           variant="outline"
           disabled={submissions.length === 0}
         >
           <Download className="mr-2 h-4 w-4" />
-          Exportar CSV
+          Exportar XLS
         </Button>
       </div>
 
@@ -262,12 +464,42 @@ export default function SubmissionsPage() {
               </select>
             </div>
 
+            {role === 'superadmin' && (
+              <div className="space-y-2">
+                <Label>Polo</Label>
+                <select
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-md"
+                >
+                  <option value="">Todos</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Coluna Documento</Label>
+              <div className="flex items-center gap-2 text-sm">
+                <input
+                  id="doc-column"
+                  type="checkbox"
+                  checked={showDocumentColumn}
+                  onChange={(e) => setShowDocumentColumn(e.target.checked)}
+                />
+                <label htmlFor="doc-column" className="cursor-pointer">Mostrar coluna “Documento”</label>
+              </div>
+            </div>
+
             <div className="flex items-end">
               <Button
                 variant="outline"
                 onClick={() => {
                   setSearchTerm('');
                   setPaymentStatusFilter('');
+                  setSelectedTenantId('');
                 }}
               >
                 Limpar Filtros
@@ -296,8 +528,9 @@ export default function SubmissionsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Polo</TableHead>
-                    <TableHead>Formulário</TableHead>
-                    <TableHead>Dados</TableHead>
+                    <TableHead>Aluno</TableHead>
+                    <TableHead>Whatsapp</TableHead>
+                    {showDocumentColumn && <TableHead>Documento</TableHead>}
                     <TableHead>Pagamento</TableHead>
                     <TableHead>Data</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
@@ -305,37 +538,142 @@ export default function SubmissionsPage() {
                 </TableHeader>
                 <TableBody>
                   {submissions.map((submission) => {
-                    // Extrair alguns campos principais para exibição
-                    const mainFields = ['nome', 'name', 'email', 'telefone', 'phone'];
-                    const displayData = mainFields
-                      .map((field) => submission.data[field])
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .join(' • ') || 'Ver detalhes';
+                    // Exibir somente o nome do aluno (coluna "Aluno")
+                    const studentName = findStudentName(submission.data);
+                    const whatsappRaw = findWhatsapp(submission.data);
+                    const fileMeta = findFirstFileMeta(submission.data);
+                    const fileUrlString = findFirstFileUrlString(submission.data);
 
                     return (
                       <TableRow key={submission.id}>
                         <TableCell>
                           <Badge variant="outline">{submission.tenants.name}</Badge>
                         </TableCell>
-                        <TableCell className="font-medium">
-                {submission.form_definitions.name}
-                        </TableCell>
-                        <TableCell className="max-w-xs truncate">{displayData}</TableCell>
+                        <TableCell className="max-w-xs truncate">{studentName || '-'}</TableCell>
+                        <TableCell className="max-w-xs truncate">{whatsappRaw ? formatPhone(whatsappRaw) : '-'}</TableCell>
+                        {showDocumentColumn && (
+                          <TableCell>
+                            {fileMeta ? (() => {
+                              const t = detectFileType(fileMeta);
+                              const Icon = pickIcon(t);
+                              const label = fileMeta.name || 'Arquivo';
+                              const sizeLabel = formatBytes(fileMeta.size);
+
+                              // Caso exista storagePath, resolvemos Signed URL com domínio do Supabase via DocumentAnchor
+                              if (fileMeta.storagePath) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <DocumentAnchor
+                                      storagePath={fileMeta.storagePath}
+                                      Icon={Icon}
+                                      label={label}
+                                      title={`${label} • ${sizeLabel}`}
+                                      className="inline-flex items-center gap-2 text-brand-primary underline"
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              // Se não houver storagePath mas houver URL, exibe link direto
+                              if (fileMeta.url) {
+                                // Tenta extrair storagePath de URL pública antiga do Supabase para também usar Signed URL
+                                const basePath = '/storage/v1/object/public/form-submissions/';
+                                const idx = fileMeta.url.indexOf(basePath);
+                                if (idx >= 0) {
+                                  const storageRel = fileMeta.url.substring(idx + basePath.length);
+                                  if (storageRel) {
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <DocumentAnchor
+                                          storagePath={storageRel}
+                                          Icon={Icon}
+                                          label={label}
+                                          title={`${label} • ${sizeLabel}`}
+                                          className="inline-flex items-center gap-2 text-brand-primary underline"
+                                        />
+                                      </div>
+                                    );
+                                  }
+                                }
+
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={fileMeta.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 text-brand-primary underline"
+                                      title={`${label} • ${sizeLabel}`}
+                                    >
+                                      <Icon className="h-4 w-4" />
+                                      <span className="text-sm truncate max-w-[180px]">{label}</span>
+                                    </a>
+                                  </div>
+                                );
+                              }
+
+                              // Sem URL
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Icon className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm truncate max-w-[180px]" title={`${label} • ${sizeLabel}`}>{label}</span>
+                                </div>
+                              );
+                            })() : fileUrlString ? (() => {
+                              const cleanUrl = fileUrlString.split('#')[0];
+                              const fileNameFromUrl = (cleanUrl.split('?')[0].split('/').pop() || 'Documento');
+
+                              // Se URL pública antiga do Supabase, extrai storagePath e usa DocumentAnchor
+                              const basePath = '/storage/v1/object/public/form-submissions/';
+                              const idx = cleanUrl.indexOf(basePath);
+                              if (idx >= 0) {
+                                const storageRel = cleanUrl.substring(idx + basePath.length);
+                                if (storageRel) {
+                                  const pseudoMeta: FileMeta = { name: fileNameFromUrl };
+                                  const t = detectFileType(pseudoMeta);
+                                  const Icon = pickIcon(t);
+                                  return (
+                                    <DocumentAnchor
+                                      storagePath={storageRel}
+                                      Icon={Icon}
+                                      label={fileNameFromUrl}
+                                      title={fileNameFromUrl}
+                                      className="inline-flex items-center gap-2 text-brand-primary underline"
+                                    />
+                                  );
+                                }
+                              }
+
+                              // Caso contrário, mantém link direto
+                              const pseudoMeta: FileMeta = { name: fileNameFromUrl };
+                              const t = detectFileType(pseudoMeta);
+                              const Icon = pickIcon(t);
+                              return (
+                                <a
+                                  href={cleanUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-brand-primary underline"
+                                  title={fileNameFromUrl}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                  <span className="text-sm truncate max-w-[180px]">{fileNameFromUrl}</span>
+                                </a>
+                              );
+                            })() : (
+                              <Badge variant="destructive" className="text-xs">Arquivo ausente — reenvio necessário</Badge>
+                            )}
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Badge variant={getPaymentStatusColor(submission.payment_status)}>
                             {getPaymentStatusLabel(submission.payment_status)}
                           </Badge>
-                          {submission.payment_amount && (
-                            <span className="ml-2 text-sm text-muted-foreground">
-                              R$ {submission.payment_amount.toFixed(2)}
-                            </span>
-                          )}
                         </TableCell>
                         <TableCell>{formatDate(submission.created_at)}</TableCell>
                         <TableCell className="text-right space-x-2">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
                             onClick={() => handleViewSubmission(submission)}
                           >
@@ -364,17 +702,17 @@ export default function SubmissionsPage() {
 
       {/* Dialog Ver Detalhes */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto p-6">
           <DialogHeader>
             <DialogTitle>Detalhes da Submissão</DialogTitle>
             <DialogDescription>
             {selectedSubmission?.form_definitions.name} • {selectedSubmission?.tenants.name}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-6">
             {selectedSubmission && (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-6">
                   <div>
                     <Label className="text-muted-foreground">Status Pagamento</Label>
                     <p className="mt-1">
@@ -396,21 +734,121 @@ export default function SubmissionsPage() {
                     <p className="mt-1">{formatDate(selectedSubmission.created_at)}</p>
                   </div>
                 </div>
-
-                <hr />
-
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <h3 className="font-semibold text-lg">Dados do Formulário</h3>
-                  {Object.entries(selectedSubmission.data).map(([key, value]) => (
-                    <div key={key} className="grid grid-cols-3 gap-2">
-                      <Label className="text-muted-foreground capitalize">
-                        {key.replace(/_/g, ' ')}:
-                      </Label>
-                      <p className="col-span-2 font-medium">
-                        {Array.isArray(value) ? value.join(', ') : String(value)}
-                      </p>
-                    </div>
-                  ))}
+                  {Object.entries(selectedSubmission.data).map(([key, value]) => {
+                    const isString = typeof value === 'string';
+                    const valStr = isString ? value : '';
+                    const isUrlString = isString && /^https?:\/\//.test(valStr);
+                    const cleanUrl = isString ? valStr.split('#')[0] : '';
+                    const fileNameFromUrl = isString ? (cleanUrl.split('?')[0].split('/').pop() || '') : '';
+
+                    // Caso 1: metadados de arquivo (objeto)
+                    if (isFileMeta(value)) {
+                      const meta = value;
+                      const typeLabel = detectFileType(meta);
+                      const Icon = pickIcon(typeLabel);
+                      const sizeLabel = formatBytes(meta.size);
+                      const label = meta.name || 'Documento';
+                      return (
+                        <div key={key} className="grid grid-cols-2 md:grid-cols-3 gap-3 py-1">
+                          <Label className="text-muted-foreground pr-2">
+                            {formatDisplayLabel(key)}:
+                          </Label>
+                          <div className="col-span-1 md:col-span-2 font-medium break-words">
+                            <div className="flex items-center gap-2">
+                              {meta.storagePath ? (
+                                <DocumentAnchor
+                                  storagePath={meta.storagePath}
+                                  Icon={Icon}
+                                  label={label}
+                                  title={`${label} • ${typeLabel.toUpperCase()} • ${sizeLabel}`}
+                                  className="inline-flex items-center"
+                                />
+                              ) : meta.url ? (
+                                (() => {
+                                  const basePath = '/storage/v1/object/public/form-submissions/';
+                                  const idx = meta.url.indexOf(basePath);
+                                  if (idx >= 0) {
+                                    const storageRel = meta.url.substring(idx + basePath.length);
+                                    if (storageRel) {
+                                      return (
+                                        <DocumentAnchor
+                                          storagePath={storageRel}
+                                          Icon={Icon}
+                                          label={label}
+                                          title={`${label} • ${typeLabel.toUpperCase()} • ${sizeLabel}`}
+                                          className="inline-flex items-center"
+                                        />
+                                      );
+                                    }
+                                  }
+                                  return (
+                                    <a href={meta.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
+                                      <Icon className="h-4 w-4" />
+                                    </a>
+                                  );
+                                })()
+                              ) : (
+                                <Icon className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <span className="truncate" title={`${label} • ${typeLabel.toUpperCase()} • ${sizeLabel}`}>{label}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">Tipo: {typeLabel.toUpperCase()} • Tamanho: {sizeLabel}</p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Caso 2: string com URL de arquivo (sem metadados estruturados)
+                    if (isUrlString) {
+                      const basePath = '/storage/v1/object/public/form-submissions/';
+                      const idx = valStr.indexOf(basePath);
+                      const storageRel = idx >= 0 ? valStr.substring(idx + basePath.length) : '';
+                      return (
+                        <div key={key} className="grid grid-cols-2 md:grid-cols-3 gap-3 py-1">
+                          <Label className="text-muted-foreground pr-2">
+                            {formatDisplayLabel(key)}:
+                          </Label>
+                          <div className="col-span-1 md:col-span-2 font-medium break-words">
+                            {storageRel ? (
+                              <span className="text-brand-primary underline inline-flex items-center gap-2">
+                                <DocumentAnchor
+                                  storagePath={storageRel}
+                                  Icon={LinkIcon}
+                                  label={fileNameFromUrl || 'Abrir documento'}
+                                  title={fileNameFromUrl || 'Abrir documento'}
+                                  className="inline-flex items-center gap-2"
+                                />
+                              </span>
+                            ) : (
+                              <a
+                                href={valStr}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-brand-primary underline inline-flex items-center gap-2"
+                              >
+                                <LinkIcon className="h-4 w-4" />
+                                {fileNameFromUrl || 'Abrir documento'}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Caso 3: valor comum
+                    return (
+                      <div key={key} className="grid grid-cols-2 md:grid-cols-3 gap-3 py-1">
+                        <Label className="text-muted-foreground pr-2">
+                          {formatDisplayLabel(key)}:
+                        </Label>
+                        <div className="col-span-1 md:col-span-2 font-medium break-words">
+                          <p>{formatDisplayValueByKey(key, value)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}

@@ -69,10 +69,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
     }
 
-    // Obter URL pública
-    const { data: urlData } = supabase.storage
+    // Gerar URL assinada (válida para acesso direto, mesmo com bucket privado)
+    const { data: signedData, error: signedError } = await supabase.storage
       .from('form-submissions')
-      .getPublicUrl(storagePath);
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 dias
+
+    if (signedError) {
+      console.error('Signed URL error:', signedError);
+    }
 
     return NextResponse.json({
       success: true,
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest) {
         size: file.size,
         type: file.type,
         storagePath,
-        url: urlData.publicUrl,
+        url: signedData?.signedUrl || null,
       },
     });
   } catch (error) {

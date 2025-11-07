@@ -55,6 +55,12 @@ export const FIELD_TYPES = [
     description: 'Múltiplas seleções possíveis',
   },
   {
+    value: 'accept',
+    label: 'Aceite',
+    icon: 'CheckCircle',
+    description: 'Checkbox único para aceite com texto configurável',
+  },
+  {
     value: 'file',
     label: 'Arquivo',
     icon: 'Upload',
@@ -148,6 +154,7 @@ export function getDefaultPlaceholder(type: FieldType): string {
     select: 'Selecione uma opção',
     radio: '',
     checkbox: '',
+    accept: 'Ex: eu declaro que li e concordo com os termos',
     file: 'Clique para selecionar arquivo',
     cpf: '000.000.000-00',
     cep: '00000-000',
