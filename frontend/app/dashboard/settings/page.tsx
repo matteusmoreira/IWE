@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Save, Settings as SettingsIcon, CreditCard, MessageCircle, Webhook } from 'lucide-react';
+import { Loader2, Save, Settings as SettingsIcon, CreditCard, MessageCircle, Webhook, CheckCircle, XCircle, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SettingsPage() {
@@ -28,6 +28,10 @@ export default function SettingsPage() {
     api_key: '',
     is_active: true,
   });
+  const [whatsappTestLoading, setWhatsappTestLoading] = useState(false);
+  const [whatsappTestResult, setWhatsappTestResult] = useState<any>(null);
+  const [whatsappQrLoading, setWhatsappQrLoading] = useState(false);
+  const [whatsappQrData, setWhatsappQrData] = useState<any>(null);
 
   // n8n
   const [n8nConfig, setN8nConfig] = useState({
@@ -68,6 +72,93 @@ export default function SettingsPage() {
       console.error('Error fetching tenants:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestWhatsApp = async () => {
+    setWhatsappTestLoading(true);
+    setWhatsappTestResult(null);
+
+    try {
+      const response = await fetch('/api/settings/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_url: whatsappConfig.api_url,
+          api_key: whatsappConfig.api_key,
+          instance_name: whatsappConfig.instance_name,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setWhatsappTestResult({
+          success: true,
+          message: data.message,
+          instances: data.instances,
+          total_instances: data.total_instances,
+          connected_instances: data.connected_instances,
+          connection_state: data.connection_state ?? null,
+        });
+        toast.success(data.message);
+      } else {
+        setWhatsappTestResult({
+          success: false,
+          error: data.error || 'Erro ao testar conexão',
+          instances: data.instances || [],
+        });
+        toast.error(data.error || 'Erro ao testar conexão');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao testar conexão';
+      setWhatsappTestResult({
+        success: false,
+        error: errorMessage,
+        instances: [],
+      });
+      toast.error('Erro ao testar conexão');
+    } finally {
+      setWhatsappTestLoading(false);
+    }
+  };
+
+  const handleShowWhatsAppQr = async () => {
+    setWhatsappQrLoading(true);
+    setWhatsappQrData(null);
+
+    try {
+      const response = await fetch('/api/settings/whatsapp/qrcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_url: whatsappConfig.api_url,
+          api_key: whatsappConfig.api_key,
+          instance_name: whatsappConfig.instance_name,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setWhatsappQrData(data);
+        if (data.qrcode_base64) {
+          toast.success('QR Code carregado. Escaneie para conectar.');
+        } else if (String(data.state || '').toLowerCase() === 'open') {
+          toast.info('Instância já conectada — não há QR Code disponível.');
+        } else {
+          toast.success(data.message || 'QR Code disponível.');
+        }
+      } else {
+        setWhatsappQrData({ success: false, error: data.error || 'Falha ao obter QR Code' });
+        toast.error(data.error || 'Falha ao obter QR Code');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao obter QR Code';
+      setWhatsappQrData({ success: false, error: errorMessage });
+      toast.error('Erro ao obter QR Code');
+    } finally {
+      setWhatsappQrLoading(false);
     }
   };
 
@@ -380,6 +471,144 @@ export default function SettingsPage() {
                   onChange={(e) => setWhatsappConfig({ ...whatsappConfig, is_active: e.target.checked })}
                 />
                 <span>Ativo</span>
+              </div>
+
+              {/* Área de Teste */}
+              <div className="pt-4 border-t">
+                <h4 className="font-semibold mb-3">Testar Conexão</h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Teste a conexão com a Evolution API e visualize as instâncias disponíveis.
+                </p>
+                
+                <Button
+                  type="button"
+                  onClick={handleTestWhatsApp}
+                  disabled={whatsappTestLoading || !whatsappConfig.api_url || !whatsappConfig.api_key}
+                  variant="outline"
+                  className="mb-4"
+                >
+                  {whatsappTestLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                  )}
+                  Testar Conexão
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleShowWhatsAppQr}
+                  disabled={whatsappQrLoading || !whatsappConfig.api_url || !whatsappConfig.api_key || !whatsappConfig.instance_name}
+                  variant="outline"
+                  className="mb-4 ml-2"
+                >
+                  {whatsappQrLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <QrCode className="mr-2 h-4 w-4" />
+                  )}
+                  Mostrar QR Code
+                </Button>
+
+                {/* Resultados do Teste */}
+                {whatsappTestResult && (
+                  <div className={`p-4 rounded-md ${whatsappTestResult.success ? 'bg-green-50 dark:bg-green-900/20 border border-green-200' : 'bg-red-50 dark:bg-red-900/20 border border-red-200'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {whatsappTestResult.success ? (
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600" />
+                      )}
+                      <span className={`font-semibold ${whatsappTestResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                        {whatsappTestResult.success ? 'Conexão bem-sucedida!' : 'Erro na conexão'}
+                      </span>
+                    </div>
+                    
+                    {whatsappTestResult.success ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          {whatsappTestResult.message}
+                        </p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="font-medium">Total de Instâncias:</span>
+                            <span className="ml-2">{whatsappTestResult.total_instances}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium">Conectadas:</span>
+                            <span className="ml-2 text-green-600">{whatsappTestResult.connected_instances}</span>
+                          </div>
+                        </div>
+                        
+                        {whatsappTestResult.instances && whatsappTestResult.instances.length > 0 && (
+                          <div className="mt-3">
+                            <h5 className="font-medium mb-2">Instâncias Encontradas:</h5>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {whatsappTestResult.instances.map((instance: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border">
+                                  <div>
+                                    <div className="font-medium text-sm">{instance.name}</div>
+                                    <div className="text-xs text-gray-500">{instance.number}</div>
+                                  </div>
+                                  {(() => {
+                                    const statusLabel = (instance.connectionStatus ?? instance.status ?? 'unknown');
+                                    const status = String(statusLabel).toLowerCase();
+                                    const isConnected = status === 'open' || status === 'connected';
+                                    return (
+                                      <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                        isConnected ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                      }`}>
+                                        {statusLabel}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        {whatsappTestResult.error}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* QR Code da Instância */}
+                {whatsappQrData && (
+                  <div className={`mt-4 p-4 rounded-md ${whatsappQrData.success ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200' : 'bg-red-50 dark:bg-red-900/20 border border-red-200'}`}>
+                    {whatsappQrData.success ? (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <QrCode className="h-5 w-5 text-blue-600" />
+                          <span className="font-semibold text-blue-800">QR Code</span>
+                        </div>
+                        {whatsappQrData.qrcode_base64 ? (
+                          <div className="flex flex-col items-start">
+                            <img
+                              src={`data:image/png;base64,${whatsappQrData.qrcode_base64}`}
+                              alt="QR Code WhatsApp"
+                              className="border rounded p-2 bg-white dark:bg-gray-800"
+                              style={{ maxWidth: 240 }}
+                            />
+                            <p className="mt-2 text-xs text-muted-foreground">Escaneie este QR Code no WhatsApp para conectar.</p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-700 dark:text-gray-300">
+                            {whatsappQrData.message || 'Instância já conectada — QR Code não disponível.'}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-5 w-5 text-red-600" />
+                        <p className="text-sm text-red-700 dark:text-red-300">{whatsappQrData.error}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="pt-4">

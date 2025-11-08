@@ -739,6 +739,140 @@ paths:
         '500':
           description: Erro ao processar agendamentos.
 
+  /api/settings/whatsapp/test:
+    post:
+      summary: Testa conexão com Evolution API v2 e lista instâncias (Next.js API)
+      description: |
+        Testa a conexão com a Evolution API v2 utilizando `api_url` e `api_key` fornecidos e, opcionalmente, `instance_name`.
+        Operações executadas:
+        - GET `/instance/fetchInstances`
+        - GET `/instance/connectionState/{instance_name}` (quando `instance_name` é informado)
+        Retorna status geral, contagem e detalhes das instâncias, além do estado da conexão da instância específica (se aplicável).
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_url:
+                  type: string
+                  format: uri
+                api_key:
+                  type: string
+                instance_name:
+                  type: string
+                  nullable: true
+              required:
+                - api_url
+                - api_key
+      responses:
+        '200':
+          description: Teste executado com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  instances_total:
+                    type: integer
+                  instances_connected:
+                    type: integer
+                  instances:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        instanceName:
+                          type: string
+                        status:
+                          type: string
+                        connectionStatus:
+                          type: string
+                        qrcode:
+                          type: string
+                        pushName:
+                          type: string
+                        phoneNumber:
+                          type: string
+                  connection_state:
+                    type: object
+                    nullable: true
+        '400':
+          description: Requisição inválida.
+        '401':
+          description: Não autorizado.
+        '403':
+          description: Proibido.
+        '500':
+          description: Erro interno.
+
+  /api/settings/whatsapp/qrcode:
+    post:
+      summary: Obtém QR Code da instância (Evolution API v2) (Next.js API)
+      description: |
+        Tenta obter o QR Code de pareamento da instância informada.
+        Estratégia:
+        - GET `/instance/qrcode/{instance_name}` (retorna imagem PNG ou JSON com `qrcode.base64`)
+        - Se falhar, GET `/instance/connect/{instance_name}` (pode retornar `qrcode.base64` ou `state = open` quando já conectado)
+        Autenticação via header `apikey`.
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_url:
+                  type: string
+                  format: uri
+                api_key:
+                  type: string
+                instance_name:
+                  type: string
+              required:
+                - api_url
+                - api_key
+                - instance_name
+      responses:
+        '200':
+          description: QR Code obtido com sucesso ou instância já conectada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  state:
+                    type: string
+                    description: Estado retornado pela Evolution API (ex.: qrcode, open).
+                  qrcode_base64:
+                    type: string
+                    description: Imagem do QR Code em base64 (PNG).
+        '400':
+          description: Erro ao conectar.
+        '401':
+          description: Não autorizado.
+        '403':
+          description: Proibido.
+        '404':
+          description: QR Code não disponível (instância não em estado de pareamento).
+        '408':
+          description: Timeout ao obter QR Code.
+        '500':
+          description: Erro interno.
+
 components:
   schemas:
     ScheduleJob:

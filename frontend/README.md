@@ -26,3 +26,28 @@ Como testar (local)
 
 Observações
 - Configurações de WhatsApp/Moodle continuam por tenant. Apenas a integração do Mercado Pago é global.
+
+WhatsApp — Teste de Conexão (Evolution API)
+1) Variáveis de ambiente (veja .env.local.example)
+- EVOLUTION_API_URL: URL base da Evolution API (sem barra no final)
+- EVOLUTION_API_KEY: API Key (servidor)
+- EVOLUTION_INSTANCE_NAME: Nome da instância (opcional)
+
+2) Teste via UI
+- Vá em Dashboard > Configurações > WhatsApp
+- Preencha instance_name, api_url e api_key
+- Clique em “Testar Conexão” para ver instâncias e estado da conexão
+
+4) Mostrar QR Code (pareamento)
+- Na mesma tela (Dashboard > Configurações > WhatsApp), clique em “Mostrar QR Code”.
+- O sistema chama o endpoint interno POST /api/settings/whatsapp/qrcode com api_url, api_key e instance_name.
+- Quando a instância está em estado de pareamento (qrcode), o QR é exibido (PNG base64). Se já estiver conectada (open), informa que não há QR disponível.
+
+3) Teste via script Node (alternativa)
+- Rode: node frontend/scripts/test-evolution-api.mjs (com EVOLUTION_* no ambiente)
+- O script faz GET /instance/fetchInstances e /instance/connectionState/{instance}
+- Header usado: apikey (não exposto em logs)
+
+Importante
+- Erros comuns: 404 ao usar baseUrl com barra final + path com barra inicial (//), 401 quando o header apikey não é enviado.
+ - Endpoints usados: GET /instance/fetchInstances, GET /instance/connectionState/{instance}, GET /instance/qrcode/{instance} (fallback GET /instance/connect/{instance}).
