@@ -94,14 +94,25 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
       return;
     }
 
-    // Pagamento global: usar token de ambiente (MP_ACCESS_TOKEN)
-    const accessToken = process.env.MP_ACCESS_TOKEN;
+    // Token do tenant quando disponível; fallback para variável de ambiente
+    const { data: cfg } = await supabase
+      .from('mercadopago_configs')
+      .select('access_token, is_active')
+      .eq('tenant_id', submission.tenant_id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const accessToken = (cfg && cfg.is_active !== false && cfg.access_token)
+      ? cfg.access_token
+      : (process.env.MP_ACCESS_TOKEN || '');
+
     if (!accessToken || accessToken.trim() === '') {
-      console.error('MP_ACCESS_TOKEN não configurado para processamento de webhook');
+      console.error('Credenciais do Mercado Pago não configuradas para processamento de webhook');
       if (eventId) {
         await supabase
           .from('payment_events')
-          .update({ status: 'ERRO', error_message: 'MP_ACCESS_TOKEN não configurado' })
+          .update({ error_message: 'Credenciais do Mercado Pago não configuradas' })
           .eq('id', eventId);
       }
       return;

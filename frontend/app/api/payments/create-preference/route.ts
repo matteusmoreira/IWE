@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAppUrl, getPreferenceClient } from '@/lib/mercadopago';
+import { getAppUrl, getPreferenceClientForTenant } from '@/lib/mercadopago';
 
 // Usamos o client ADMIN para bypass de RLS no backend.
 // Isso evita 404 por "submissão não encontrada" quando a política RLS bloqueia leitura com chave ANON.
@@ -53,14 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Pagamento global: usamos o token de ambiente (MP_ACCESS_TOKEN) e não mais configuração por tenant.
-    // Validação antecipada para evitar erro genérico mais adiante.
-    if (!process.env.MP_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN.trim() === '') {
-      return NextResponse.json(
-        { error: 'MP_ACCESS_TOKEN não configurado', reason: 'NO_GLOBAL_MP_TOKEN' },
-        { status: 500 }
-      );
-    }
+    // Agora usamos credenciais por tenant quando disponíveis, com fallback para variável de ambiente.
 
     // Preparar dados do pagamento
     const amount = submission.payment_amount || submission.form_definitions.settings?.payment_amount || 0;
@@ -121,8 +114,8 @@ export async function POST(request: NextRequest) {
       binary_mode: true,
     };
 
-    // Usar SDK oficial com token global
-    const preferenceClient = getPreferenceClient();
+    // Usar SDK oficial com token do tenant quando disponível
+    const preferenceClient = await getPreferenceClientForTenant(submission.tenants?.id);
     let mpData: any;
     try {
       const result = await preferenceClient.create({ body: preferencePayload as any });

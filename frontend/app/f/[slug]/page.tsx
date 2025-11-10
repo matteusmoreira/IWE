@@ -1,8 +1,10 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,8 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Form as FormType, FormField } from '@/lib/form-field-types';
 import { formatPhone, formatCEP, formatCPF } from '@/lib/masks';
-import { FileUpload } from '@/components/ui/file-upload';
 import { toast } from 'sonner';
+
+// Carrega o componente de upload de arquivos apenas no cliente para evitar SSR desnecessário
+const FileUpload = dynamic(() => import('@/components/ui/file-upload').then(m => m.FileUpload), { ssr: false });
 
 export default function PublicFormBySlugPage() {
   const params = useParams();

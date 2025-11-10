@@ -1,133 +1,71 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
-import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
-  Settings, 
-  LogOut,
-  Moon,
-  Sun,
-  Menu,
-  Shield,
-  MessageCircle
-} from 'lucide-react';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import Logo from '@/components/ui/logo';
-import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { LayoutDashboard, Users, FileText, Settings, Shield, MessageCircle } from 'lucide-react';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import DarkModeButton from '@/components/dashboard/DarkModeButton';
+import LogoutButton from '@/components/dashboard/LogoutButton';
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Buscar usuário autenticado pelo cookie (server-side)
+  const supabase = await createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
 
-  useEffect(() => {
-    checkAuth();
-    
-    // Check dark mode preference
-    const isDark = localStorage.getItem('darkMode') === 'true';
-    setDarkMode(isDark);
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    }
-
-    // Fallback para erro de chunk em navegação (ex.: ChunkLoadError)
-    // Se ocorrer falha ao carregar algum bundle, forçamos um reload limpo.
-    const onWindowError = (e: ErrorEvent) => {
-      const msg = String(e.message || e.error || '');
-      if (msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) {
-        // Evita loop: usa reload completo sem cache
-        // Observação: isso não corrige a causa raiz, mas evita travar o usuário.
-        console.warn('Detecção de ChunkLoadError, recarregando a página...');
-        // Pequeno atraso para permitir logs e evitar race com HMR
-        setTimeout(() => {
-          // Força recarregar do servidor
-          location.reload();
-        }, 100);
-      }
-    };
-    window.addEventListener('error', onWindowError);
-    return () => window.removeEventListener('error', onWindowError);
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      // Buscar usuário autenticado via backend
-      const res = await fetch('/api/users/me')
-      if (!res.ok) {
-        router.push('/auth/login')
-        return
-      }
-      const payload = await res.json()
-      setUser(payload?.user)
-    } catch (error) {
-      console.error('Auth error:', error)
-      router.push('/auth/login')
-    } finally {
-      setLoading(false)
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      toast.success('Logout realizado com sucesso!');
-      router.push('/auth/login');
-    } catch (error) {
-      toast.error('Erro ao fazer logout');
-    }
-  };
-
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    localStorage.setItem('darkMode', String(newMode));
-    document.documentElement.classList.toggle('dark', newMode);
-  };
-  // Monta itens de menu conforme o papel do usuário
-  const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-    { icon: Users, label: 'Polos', href: '/dashboard/tenants' },
-    // Status de Integração (MP) — visível para admin e superadmin
-    ...(user?.role === 'admin' || user?.role === 'superadmin' ? [{ icon: MessageCircle /* placeholder icon */, label: 'Status Integração', href: '/dashboard/status-integracao' }] : []),
-    // Remover "Admins" para admins; manter para superadmin
-    ...(user?.role === 'superadmin' ? [{ icon: Shield, label: 'Admins', href: '/dashboard/admins' }] : []),
-    // Remover "Formulários" para admins; manter para superadmin
-    ...(user?.role === 'superadmin' ? [{ icon: FileText, label: 'Formulários', href: '/dashboard/forms' }] : []),
-    { icon: Users, label: 'Alunos', href: '/dashboard/submissions' },
-    // Mensagens (WhatsApp/E-mail)
-    { icon: MessageCircle, label: 'Mensagens', href: '/dashboard/messages' },
-    // Templates (WhatsApp/E-mail)
-    { icon: FileText, label: 'Templates', href: '/dashboard/templates' },
-    // Ocultar "Configurações" para admins; manter para superadmin
-    ...(user?.role === 'superadmin' ? [{ icon: Settings, label: 'Configurações', href: '/dashboard/settings' }] : []),
-  ];
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-brand-primary"></div>
-      </div>
-    );
+  if (!authUser) {
+    // Redireciona no servidor evitando hidratação desnecessária quando não autenticado
+    redirect('/auth/login');
   }
+
+  // Obter registro completo do usuário (tabela public.users) usando Service Role no backend
+  const admin = createAdminClient();
+  let { data: userRow } = await admin
+    .from('users')
+    .select('*')
+    .eq('auth_user_id', authUser!.id)
+    .maybeSingle();
+
+  if (!userRow && authUser?.email) {
+    const { data: byEmail } = await admin
+      .from('users')
+      .select('*')
+      .eq('email', authUser.email)
+      .maybeSingle();
+    if (byEmail) userRow = byEmail;
+  }
+
+  if (!userRow) {
+    // Segurança: se não encontrou o registro, força login novamente
+    redirect('/auth/login');
+  }
+
+  // Menu conforme papel do usuário
+  const menuItems = [
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Polos', href: '/dashboard/tenants', icon: Users },
+    ...(userRow?.role === 'admin' || userRow?.role === 'superadmin'
+      ? [{ label: 'Status Integração', href: '/dashboard/status-integracao', icon: MessageCircle }]
+      : []),
+    ...(userRow?.role === 'superadmin' ? [{ label: 'Admins', href: '/dashboard/admins', icon: Shield }] : []),
+    ...(userRow?.role === 'superadmin' ? [{ label: 'Formulários', href: '/dashboard/forms', icon: FileText }] : []),
+    { label: 'Alunos', href: '/dashboard/submissions', icon: Users },
+    { label: 'Mensagens', href: '/dashboard/messages', icon: MessageCircle },
+    { label: 'Templates', href: '/dashboard/templates', icon: FileText },
+    ...(userRow?.role === 'superadmin' ? [{ label: 'Configurações', href: '/dashboard/settings', icon: Settings }] : []),
+  ];
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
+      {/* Sidebar fixa (sem hidratação) */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen transition-transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } bg-card border-r border-border`}
+        className="fixed top-0 left-0 z-40 h-screen bg-card border-r border-border"
         style={{ width: '240px' }}
       >
         <div className="h-full px-3 py-4 overflow-y-auto">
@@ -137,10 +75,7 @@ export default function DashboardLayout({
           <ul className="space-y-2 font-medium">
             {menuItems.map((item) => (
               <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className="flex items-center p-2 rounded-lg hover:bg-muted group"
-                >
+                <Link href={item.href} className="flex items-center p-2 rounded-lg hover:bg-muted group">
                   <item.icon className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
                   <span className="ml-3">{item.label}</span>
                 </Link>
@@ -150,38 +85,25 @@ export default function DashboardLayout({
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className={`${sidebarOpen ? 'ml-60' : 'ml-0'} transition-all`}>
+      {/* Conteúdo principal com margem fixa para a sidebar */}
+      <div className="ml-60">
         {/* Topbar */}
         <header className="sticky top-0 z-30 bg-card border-b border-border">
           <div className="px-4 py-3 flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-
+            {/* Sem botão de toggle por enquanto para reduzir hidratação */}
+            <div />
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
-                {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </Button>
-
+              <DarkModeButton />
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <p className="text-sm font-medium">{user?.name}</p>
-                  <p className="text-xs text-muted-foreground">{user?.role}</p>
+                  <p className="text-sm font-medium">{userRow?.name}</p>
+                  <p className="text-xs text-muted-foreground">{userRow?.role}</p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="h-5 w-5" />
-                </Button>
+                <LogoutButton />
               </div>
             </div>
           </div>
         </header>
-
-        {/* Page Content */}
         <main>{children}</main>
       </div>
     </div>

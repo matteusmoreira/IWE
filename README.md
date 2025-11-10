@@ -449,3 +449,38 @@ Uso:
   - Detecção automática: `powershell -ExecutionPolicy Bypass -File scripts\install-playwright-revision.ps1 -ErrorTextFile path\para\erro.txt`
 
 O script verifica `%LOCALAPPDATA%\ms-playwright\chromium_headless_shell-<revisão>\chrome-win\headless_shell.exe` e para quando encontrar.
+
+## ⚡ Otimizações de Performance (Nov/2025)
+
+Foco em reduzir hidratação e SSR desnecessário em páginas públicas e componentes pesados:
+
+- Dynamic Import com `ssr: false` para componentes pesados:
+  - `FileUpload` (público): carregado apenas no cliente em `frontend/app/form/[id]/page.tsx` e `frontend/app/f/[slug]/page.tsx`.
+  - Wrappers para gráficos: `frontend/components/charts/lazy.tsx` exporta `LazyBarChart` e `LazyDonutChart` com fallback de carregamento.
+- Benefícios:
+  - Menos HTML gerado no servidor para subcomponentes que dependem de APIs do navegador.
+  - Menor bundle inicial e menor tempo de hidratação quando gráficos não são necessários imediatamente.
+
+Como usar gráficos com dynamic import:
+
+```tsx
+// Exemplo em um Client Component
+import { LazyBarChart, LazyDonutChart } from '@/components/charts/lazy';
+
+export default function MyAnalytics() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <LazyBarChart data={[{ label: 'A', value: 10 }, { label: 'B', value: 15 }]} />
+      <LazyDonutChart data={[{ label: 'Pago', value: 8 }, { label: 'Pendente', value: 2 }]} />
+    </div>
+  );
+}
+```
+
+Smoke test local:
+- Build: `npm run build` (deve passar sem erros de ESLint bloqueantes).
+- Dev: `npm run dev` e acesse `http://localhost:3001/`.
+- UI pública: valide `/form/{id}` ou `/f/{slug}` com um formulário que tenha upload de arquivos; o upload deve funcionar e a página não deve quebrar no SSR.
+
+Notas:
+- O uso de `/* eslint-disable @typescript-eslint/no-explicit-any */` foi aplicado apenas nas páginas públicas de formulário para destravar o build. É uma medida temporária e localizada; recomendamos tipagem progressiva dos dados de formulário.

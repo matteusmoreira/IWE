@@ -28,6 +28,10 @@ export default function MessagesPage() {
   const [recipientsManual, setRecipientsManual] = useState<string>("");
   const [search, setSearch] = useState<string>("");
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  // Paginação
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(20);
+  const [total, setTotal] = useState<number>(0);
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
   const [schedule, setSchedule] = useState<boolean>(false);
   const [scheduleAt, setScheduleAt] = useState<string>("");
@@ -105,19 +109,30 @@ export default function MessagesPage() {
   }, [search]);
 
   useEffect(() => {
-    // Buscar submissions globalmente para superadmin e restritas pelo RLS para admins
+    // Buscar submissions com paginação. Quando a busca é vazia, lista geral; quando há termo, filtra no servidor.
     const controller = new AbortController();
     const q = new URLSearchParams();
+    const offset = (page - 1) * limit;
+    q.set("limit", String(limit));
+    q.set("offset", String(offset));
     if (debouncedSearch) q.set("search", debouncedSearch);
+
     setLoadingSubmissions(true);
     fetch(`/api/submissions?${q.toString()}`, { signal: controller.signal })
       .then(async (res) => {
         const payload = await res.json();
-        setSubmissions(payload?.submissions || []);
+        const list = payload?.submissions || [];
+        setSubmissions(list);
+        setTotal(Number(payload?.total ?? 0));
       })
       .catch(() => {})
       .finally(() => setLoadingSubmissions(false));
     return () => controller.abort();
+  }, [debouncedSearch, page, limit]);
+
+  // Ao mudar o termo de busca, sempre voltar para página 1
+  useEffect(() => {
+    setPage(1);
   }, [debouncedSearch]);
 
   // Mantém seleção apenas quando a lista muda
@@ -270,6 +285,21 @@ export default function MessagesPage() {
     } finally { setProcessing(false); }
   }
 
+  // Normalização para comparação (remove acentos e coloca em minúsculas)
+  const normalizeText = (s: string) => s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  // Extrator de nome (reutiliza helpers já usados no render)
+  const extractName = (data: Record<string, unknown>) => (
+    getValueByKeys(["nome_completo","nome","name"], data)
+    || getValueByContains(["nome","aluno","name"], data)
+  );
+
+  // Lista final é a própria resposta da API (paginação e busca já aplicadas)
+  const renderedSubmissions = submissions;
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-3">
@@ -303,92 +333,90 @@ export default function MessagesPage() {
       </Card>
 
       <Card className="p-4 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Buscar alunos</Label>
-            <Input placeholder="Nome, e-mail ou telefone" value={search} onChange={(e) => setSearch(e.target.value)} className="mt-1" />
-            <div className="max-h-56 overflow-auto mt-2 border rounded">
-              {loadingSubmissions && (
-                <div className="p-2 text-sm text-muted-foreground">Carregando alunos...</div>
-              )}
-              {!loadingSubmissions && submissions.length === 0 && (
-                <div className="p-2 text-sm text-muted-foreground">Nenhum aluno encontrado.</div>
-              )}
-              {!loadingSubmissions && submissions.map(s => {
-                // Extratores simples com chaves exatas e busca por substring
-                const getValueByKeys = (keys: string[], data: Record<string, unknown>) => {
-                  for (const k of keys) {
-                    const v = (data as any)?.[k];
-                    if (v != null && String(v).trim() !== "") return String(v);
+        <div>
+          <Label>Buscar alunos</Label>
+          <Input placeholder="Nome, e-mail ou telefone" autoComplete="off" value={search} onChange={(e) => setSearch(e.target.value)} className="mt-1" />
+          <div className="max-h-96 md:max-h-[480px] overflow-auto mt-2 border rounded">
+            {loadingSubmissions && (
+              <div className="p-2 text-sm text-muted-foreground">Carregando alunos...</div>
+            )}
+            {!loadingSubmissions && renderedSubmissions.length === 0 && (
+              <div className="p-2 text-sm text-muted-foreground">Nenhum aluno encontrado.</div>
+            )}
+            {!loadingSubmissions && renderedSubmissions.map(s => {
+              // Extratores simples com chaves exatas e busca por substring
+              const getValueByKeys = (keys: string[], data: Record<string, unknown>) => {
+                for (const k of keys) {
+                  const v = (data as any)?.[k];
+                  if (v != null && String(v).trim() !== "") return String(v);
+                }
+                return "";
+              };
+              const getValueByContains = (substrings: string[], data: Record<string, unknown>) => {
+                const entries = Object.entries(data || {});
+                for (const [key, val] of entries) {
+                  const lk = String(key).toLowerCase();
+                  if (substrings.some(sub => lk.includes(sub))) {
+                    const v = val != null ? String(val).trim() : '';
+                    if (v) return v;
                   }
-                  return "";
-                };
-                const getValueByContains = (substrings: string[], data: Record<string, unknown>) => {
-                  const entries = Object.entries(data || {});
-                  for (const [key, val] of entries) {
-                    const lk = String(key).toLowerCase();
-                    if (substrings.some(sub => lk.includes(sub))) {
-                      const v = val != null ? String(val).trim() : '';
-                      if (v) return v;
-                    }
-                  }
-                  return "";
-                };
+                }
+                return "";
+              };
 
-                const data = (s?.data || {}) as Record<string, unknown>;
-                const name = getValueByKeys(["nome_completo","nome","name"], data)
-                  || getValueByContains(["nome","aluno","name"], data);
-                const phoneRaw = getValueByKeys(["whatsapp","telefone","phone","celular"], data)
-                  || getValueByContains(["whats","zap","tel","fone","cel","telefone","celular","phone"], data);
-                const rgRaw = getValueByKeys(["rg","registro_geral","identidade","documento_identidade"], data)
-                  || getValueByContains(["rg","ident"], data);
-                const cepRaw = getValueByKeys(["cep","endereco_cep","address_cep"], data)
-                  || getValueByContains(["cep"], data);
+              const data = (s?.data || {}) as Record<string, unknown>;
+              const name = getValueByKeys(["nome_completo","nome","name"], data)
+                || getValueByContains(["nome","aluno","name"], data);
+              const phoneRaw = getValueByKeys(["whatsapp","telefone","phone","celular"], data)
+                || getValueByContains(["whats","zap","tel","fone","cel","telefone","celular","phone"], data);
 
-                const id = `submission-${s.id}`;
-                return (
-                  <label key={s.id} htmlFor={id} className="flex items-center gap-2 p-2 border-b">
-                    <input
-                      id={id}
-                      type="checkbox"
-                      checked={selectedSubmissionIds.includes(s.id)}
-                      onChange={(e) => {
-                        setSelectedSubmissionIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id));
-                      }}
-                    />
-                    <span className="text-sm">
-                      <span className="font-bold">{name || "Aluno"}</span>
-                      {phoneRaw && (
-                        <span className="font-bold"> • WhatsApp: {maskPhone(phoneRaw)}</span>
-                      )}
-                      {rgRaw && (
-                        <span className="text-xs text-muted-foreground"> • RG: {formatRG(rgRaw)}</span>
-                      )}
-                      {cepRaw && (
-                        <span className="text-xs text-muted-foreground"> • CEP: {formatCEP(cepRaw)}</span>
-                      )}
-                      {!name && !phoneRaw && !rgRaw && !cepRaw && (
-                        // Fallback antigo: mostra até dois pares qualquer
-                        (() => {
-                          const prioritize = ["nome_completo","nome","name","whatsapp","telefone","phone","email","contato_email","e-mail"]; 
-                          const keys = Array.from(new Set([...prioritize, ...Object.keys(data || {})]));
-                          const pairs = keys
-                            .filter(k => data && (data as any)[k] != null && String((data as any)[k]).trim() !== "")
-                            .slice(0, 2)
-                            .map(k => `${formatDisplayLabel(k)}: ${formatDisplayValueByKey(k, (data as any)[k])}`);
-                          return <span className="text-xs text-muted-foreground"> {pairs.join(" • ")}</span>;
-                        })()
-                      )}
-                    </span>
-                  </label>
-                );
-              })}
+              const id = `submission-${s.id}`;
+              return (
+                <label key={s.id} htmlFor={id} className="flex items-center gap-2 p-2 border-b">
+                  <input
+                    id={id}
+                    type="checkbox"
+                    checked={selectedSubmissionIds.includes(s.id)}
+                    onChange={(e) => {
+                      setSelectedSubmissionIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id));
+                    }}
+                  />
+                  <span className="text-sm">
+                    <span className="font-bold">{name || "Aluno"}</span>
+                    {phoneRaw && (
+                      <span className="font-bold"> • WhatsApp: {maskPhone(phoneRaw)}</span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {/* Controles de paginação */}
+          <div className="flex items-center justify-between mt-2">
+            <div className="text-xs text-muted-foreground">Página {Math.max(1, page)} de {Math.max(1, Math.ceil(total / limit) || 1)}</div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loadingSubmissions}
+              >Anterior</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= Math.ceil(total / limit) || loadingSubmissions}
+              >Próxima</Button>
             </div>
           </div>
-          <div>
-            <Label>Destinatários manuais ({channel === "whatsapp" ? "telefones" : "e-mails"})</Label>
-            <Textarea placeholder={channel === "whatsapp" ? "5511999999999, 11999999999" : "email@dominio.com, outro@dominio.com"} value={recipientsManual} onChange={(e) => setRecipientsManual(e.target.value)} className="mt-1" rows={6} />
-          </div>
+        </div>
+      </Card>
+
+      {/* Card separado para destinatários manuais */}
+      <Card className="p-4 mb-4">
+        <div>
+          <Label>Destinatários manuais ({channel === "whatsapp" ? "telefones" : "e-mails"})</Label>
+          <Textarea placeholder={channel === "whatsapp" ? "5511999999999, 11999999999" : "email@dominio.com, outro@dominio.com"} value={recipientsManual} onChange={(e) => setRecipientsManual(e.target.value)} className="mt-1" rows={6} />
         </div>
       </Card>
 

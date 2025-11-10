@@ -51,6 +51,9 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [filterOnlyPayment, setFilterOnlyPayment] = useState<boolean>(true);
+  // Forms (para sugerir placeholders)
+  const [forms, setForms] = useState<any[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string>("");
 
   // Create form state
   const [newTitle, setNewTitle] = useState<string>("");
@@ -98,6 +101,68 @@ export default function TemplatesPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // Carregar formulários para superadmin/admin (apenas nomes e campos)
+  useEffect(() => {
+    const loadForms = async () => {
+      try {
+        const r = await fetch('/api/forms');
+        if (!r.ok) return; // Não bloquear a página se não carregar
+        const payload = await r.json();
+        const list = payload?.forms || [];
+        setForms(list);
+      } catch (e) {
+        console.warn('Não foi possível carregar formulários para sugestão de placeholders');
+      }
+    };
+    loadForms();
+  }, []);
+
+  const selectedForm = useMemo(() => forms.find((f: any) => String(f.id) === String(selectedFormId)), [forms, selectedFormId]);
+
+  const suggestedPlaceholders = useMemo(() => {
+    const f = selectedForm;
+    if (!f?.form_fields) return [] as string[];
+    const names = (f.form_fields || [])
+      .filter((fld: any) => fld.is_active !== false)
+      .map((fld: any) => String(fld.name || "").trim())
+      .filter(Boolean);
+    // variáveis especiais sempre disponíveis no pós-pagamento
+    const special = ['polo', 'valor'];
+    return Array.from(new Set([...names, ...special]));
+  }, [selectedForm]);
+
+  // Heurística simples para escolher campos típicos
+  function pickFieldName(fields: any[], patterns: RegExp[], preferType?: string): string | undefined {
+    if (!fields) return undefined;
+    // 1) tentar por tipo
+    if (preferType) {
+      const byType = fields.find((f: any) => String(f.type).toLowerCase() === preferType);
+      if (byType?.name) return byType.name;
+    }
+    // 2) tentar por padrões em name/label
+    for (const p of patterns) {
+      const hit = fields.find((f: any) => p.test(String(f.name)) || p.test(String(f.label)));
+      if (hit?.name) return hit.name;
+    }
+    // 3) fallback: primeiro campo texto
+    const textField = fields.find((f: any) => String(f.type).toLowerCase() === 'text');
+    if (textField?.name) return textField.name;
+    return undefined;
+  }
+
+  function applyAutoFixPlaceholders() {
+    const fields = selectedForm?.form_fields || [];
+    const nameField = pickFieldName(fields, [/nome_completo/i, /nome/i, /name/i]);
+    const courseField = pickFieldName(fields, [/curso/i, /course/i]);
+    // telefone pode ser usado no disparo de WhatsApp, mas não é necessário no conteúdo
+    const baseSaudacao = `Olá {{${nameField || 'nome_completo'}}}! Seu pagamento foi confirmado.`;
+    const cursoParte = courseField ? ` Curso: {{${courseField}}}.` : '';
+    const extras = ` Polo: {{polo}}. Valor: {{valor}}.`;
+    const content = `${baseSaudacao}${cursoParte}${extras}`;
+    setNewContent(content);
+    toast.info('Placeholders ajustados', { description: 'Conteúdo atualizado com os campos do formulário selecionado.' });
+  }
 
   async function onCreateTemplate() {
     const variables = extractVariables(newContent);
@@ -272,6 +337,32 @@ export default function TemplatesPage() {
             <div className="flex items-center gap-2">
               <Switch checked={newActive} onCheckedChange={setNewActive} />
               <Label>Ativo</Label>
+            </div>
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 border rounded p-3">
+              <div className="md:col-span-1">
+                <Label>Formulário de referência (opcional)</Label>
+                <Select
+                  value={selectedFormId}
+                  onChange={(e) => setSelectedFormId(e.target.value)}
+                  className="mt-1"
+                >
+                  <option value="">Selecionar…</option>
+                  {forms.map((f: any) => (
+                    <option key={f.id} value={f.id}>{f.name} {f.tenants?.name ? `(${f.tenants.name})` : '(Global)'}</option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground mt-2">Sugestão rápida: escolha o formulário usado na cobrança para preencher os placeholders corretos.</p>
+              </div>
+              <div className="md:col-span-2">
+                <Label>Placeholders sugeridos</Label>
+                <div className="text-sm mt-1">
+                  {suggestedPlaceholders.length > 0 ? suggestedPlaceholders.join(', ') : 'Selecione um formulário para ver sugestões.'}
+                </div>
+                <div className="mt-2">
+                  <Button variant="secondary" onClick={applyAutoFixPlaceholders} disabled={!selectedFormId}>Corrigir placeholders automaticamente</Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">Observação: "polo" e "valor" são variáveis especiais do fluxo de pós-pagamento e sempre estão disponíveis.</p>
+              </div>
             </div>
             <div className="md:col-span-2">
               <Label>Conteúdo</Label>

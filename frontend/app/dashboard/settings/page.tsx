@@ -19,6 +19,18 @@ export default function SettingsPage() {
   // Mercado Pago
   // Status do Mercado Pago via variáveis de ambiente
   const [mpStatus, setMpStatus] = useState<any>(null);
+  // Formulário global para credenciais do Mercado Pago (somente superadmin edita)
+  const [mpGlobalConfig, setMpGlobalConfig] = useState({
+    id: '',
+    access_token: '',
+    public_key: '',
+    webhook_secret: '',
+    is_production: false,
+    is_active: true,
+    masked_access_token: '',
+    masked_public_key: '',
+    masked_webhook_secret: '',
+  });
 
   // WhatsApp
   const [whatsappConfig, setWhatsappConfig] = useState({
@@ -52,6 +64,8 @@ export default function SettingsPage() {
     fetchConfigurations();
   }, [activeTab]);
 
+  // Sem dependência de tenant para Mercado Pago (global)
+
   const fetchTenants = async () => {
     try {
       const response = await fetch('/api/tenants');
@@ -74,6 +88,8 @@ export default function SettingsPage() {
       setLoading(false);
     }
   };
+
+  // Mercado Pago não depende de tenant: nenhuma seleção padrão necessária
 
   const handleTestWhatsApp = async () => {
     setWhatsappTestLoading(true);
@@ -162,17 +178,57 @@ export default function SettingsPage() {
     }
   };
 
+  // Mercado Pago global: não há função de salvar credenciais via UI
+
+  // Testar status de integração (global)
+  const handleTestMercadoPago = async () => {
+    try {
+      const resp = await fetch(`/api/integration/mercadopago/status`);
+      const data = await resp.json();
+      if (resp.ok) {
+        setMpStatus(data);
+        toast.success('Teste executado.');
+      } else {
+        toast.error(data.error || 'Falha no teste');
+      }
+    } catch (err) {
+      toast.error('Falha ao testar preferência');
+    }
+  };
+
   const fetchConfigurations = async () => {
     try {
       setLoading(true);
 
       if (activeTab === 'mercadopago') {
-        const response = await fetch('/api/integration/mercadopago/status');
-        const data = await response.json();
-        if (response.ok) {
-          setMpStatus(data);
+        // Carregar status global
+        const stResp = await fetch(`/api/integration/mercadopago/status`);
+        const stData = await stResp.json();
+        setMpStatus(stResp.ok ? stData : null);
+
+        // Carregar configuração global (não expõe valor completo dos tokens)
+        const cfgResp = await fetch('/api/settings/mercadopago-global');
+        const cfgData = await cfgResp.json();
+        if (cfgResp.ok && cfgData.config) {
+          setMpGlobalConfig((prev) => ({
+            ...prev,
+            id: cfgData.config.id || '',
+            is_production: !!cfgData.config.is_production,
+            is_active: cfgData.config.is_active !== false,
+            masked_access_token: cfgData.config.masked_access_token || '',
+            masked_public_key: cfgData.config.masked_public_key || '',
+            masked_webhook_secret: cfgData.config.masked_webhook_secret || '',
+          }));
         } else {
-          setMpStatus(null);
+          setMpGlobalConfig((prev) => ({
+            ...prev,
+            id: '',
+            is_production: false,
+            is_active: true,
+            masked_access_token: '',
+            masked_public_key: '',
+            masked_webhook_secret: '',
+          }));
         }
       } else if (activeTab === 'whatsapp') {
         const response = await fetch('/api/settings/whatsapp');
@@ -226,6 +282,43 @@ export default function SettingsPage() {
   };
 
   // Mercado Pago agora é baseado em variáveis de ambiente; não há formulário de salvamento
+  const handleSaveMercadoPagoGlobal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+
+    try {
+      const response = await fetch('/api/settings/mercadopago-global', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_token: mpGlobalConfig.access_token,
+          public_key: mpGlobalConfig.public_key,
+          webhook_secret: mpGlobalConfig.webhook_secret,
+          is_production: mpGlobalConfig.is_production,
+          is_active: mpGlobalConfig.is_active,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        toast.success('Credenciais do Mercado Pago salvas com sucesso!');
+        // Limpar campos sensíveis após salvar
+        setMpGlobalConfig((prev) => ({
+          ...prev,
+          access_token: '',
+          public_key: '',
+          webhook_secret: '',
+        }));
+        fetchConfigurations();
+      } else {
+        toast.error(data.error || 'Erro ao salvar credenciais');
+      }
+    } catch (error) {
+      toast.error('Erro ao salvar credenciais');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleSaveWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -346,7 +439,7 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>Configuração do Mercado Pago</CardTitle>
             <CardDescription>
-              Integração baseada em variáveis de ambiente. Consulte o status abaixo.
+              Integração global. Cadastre as credenciais abaixo ou valide o status.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -364,6 +457,9 @@ export default function SettingsPage() {
                       {mpStatus.masked_mp_access_token}
                     </code>
                   )}
+                  {mpGlobalConfig.masked_access_token && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">Banco: {mpGlobalConfig.masked_access_token}</p>
+                  )}
                 </div>
                 <div className="p-4 border rounded">
                   <div className="flex items-center justify-between">
@@ -378,16 +474,16 @@ export default function SettingsPage() {
               <div className="p-4 border rounded">
                 <div className="flex items-center justify-between">
                   <span>Teste de Preferência</span>
-                  <Badge variant={mpStatus?.preference_test?.ok ? 'default' : 'destructive'}>
-                    {mpStatus?.preference_test?.ok ? 'Token válido' : 'Falhou'}
+                  <Badge variant={mpStatus?.preference_test?.success ? 'default' : 'destructive'}>
+                    {mpStatus?.preference_test?.success ? 'Token válido' : 'Falhou'}
                   </Badge>
                 </div>
-                {!mpStatus?.preference_test?.ok && mpStatus?.preference_test?.error && (
+                {mpStatus?.preference_test && !mpStatus.preference_test.success && mpStatus.preference_test.error && (
                   <p className="mt-2 text-xs text-muted-foreground">Erro: {mpStatus.preference_test.error}</p>
                 )}
                 <div className="pt-4">
                   <Button
-                    onClick={() => fetchConfigurations()}
+                    onClick={handleTestMercadoPago}
                     className="bg-brand-primary hover:bg-brand-primary/90"
                   >
                     Re-testar
@@ -395,14 +491,90 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {role === 'superadmin' && (
+                <form onSubmit={handleSaveMercadoPagoGlobal} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="mp_access_token">Access Token *</Label>
+                      <Input
+                        id="mp_access_token"
+                        type="password"
+                        value={mpGlobalConfig.access_token}
+                        onChange={(e) => setMpGlobalConfig({ ...mpGlobalConfig, access_token: e.target.value })}
+                        placeholder="Insira o access token do Mercado Pago"
+                        required
+                      />
+                      {mpGlobalConfig.masked_access_token && (
+                        <p className="text-xs text-muted-foreground">Salvo: {mpGlobalConfig.masked_access_token}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="mp_public_key">Public Key (opcional)</Label>
+                      <Input
+                        id="mp_public_key"
+                        type="password"
+                        value={mpGlobalConfig.public_key}
+                        onChange={(e) => setMpGlobalConfig({ ...mpGlobalConfig, public_key: e.target.value })}
+                        placeholder="PUBLIC_KEY"
+                      />
+                      {mpGlobalConfig.masked_public_key && (
+                        <p className="text-xs text-muted-foreground">Salvo: {mpGlobalConfig.masked_public_key}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="mp_webhook_secret">Webhook Secret (opcional)</Label>
+                      <Input
+                        id="mp_webhook_secret"
+                        type="password"
+                        value={mpGlobalConfig.webhook_secret}
+                        onChange={(e) => setMpGlobalConfig({ ...mpGlobalConfig, webhook_secret: e.target.value })}
+                        placeholder="Segredo para validar webhooks"
+                      />
+                      {mpGlobalConfig.masked_webhook_secret && (
+                        <p className="text-xs text-muted-foreground">Salvo: {mpGlobalConfig.masked_webhook_secret}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={mpGlobalConfig.is_production}
+                        onChange={(e) => setMpGlobalConfig({ ...mpGlobalConfig, is_production: e.target.checked })}
+                      />
+                      Produção
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={mpGlobalConfig.is_active}
+                        onChange={(e) => setMpGlobalConfig({ ...mpGlobalConfig, is_active: e.target.checked })}
+                      />
+                      Ativo
+                    </label>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button type="submit" disabled={submitting} className="bg-brand-primary hover:bg-brand-primary/90">
+                      {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      <Save className="mr-2 h-4 w-4" />
+                      Salvar Credenciais
+                    </Button>
+                  </div>
+                </form>
+              )}
+
               <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-md">
                 <h4 className="font-semibold mb-2">URL do Webhook:</h4>
                 <code className="text-sm bg-white dark:bg-gray-800 p-2 rounded block">
                   {typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/mercadopago
                 </code>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Configure esta URL nas notificações IPN do Mercado Pago.
-                  Credenciais agora devem ser definidas em .env: MP_ACCESS_TOKEN e APP_URL.
+                  Configure esta URL nas notificações IPN do Mercado Pago. Você pode salvar as credenciais globalmente pelo painel (somente superadmin). Caso não haja configuração no banco, será usado MP_ACCESS_TOKEN do ambiente.
                 </p>
               </div>
             </div>
@@ -551,14 +723,20 @@ export default function SettingsPage() {
                                     <div className="text-xs text-gray-500">{instance.number}</div>
                                   </div>
                                   {(() => {
-                                    const statusLabel = (instance.connectionStatus ?? instance.status ?? 'unknown');
-                                    const status = String(statusLabel).toLowerCase();
-                                    const isConnected = status === 'open' || status === 'connected';
+                                    const connectionLabel = (instance.connectionStatus ?? instance.status ?? 'unknown');
+                                    const statusLabel = (instance.status ?? 'unknown');
+                                    const conn = String(connectionLabel).toLowerCase();
+                                    const isConnected = conn === 'open' || conn === 'connected';
                                     return (
-                                      <div className={`px-2 py-1 rounded text-xs font-medium ${
-                                        isConnected ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                      }`}>
-                                        {statusLabel}
+                                      <div className="flex items-center gap-2">
+                                        <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                          isConnected ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                        }`}>
+                                          Conexão: {connectionLabel}
+                                        </div>
+                                        <div className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+                                          Status: {statusLabel}
+                                        </div>
                                       </div>
                                     );
                                   })()}

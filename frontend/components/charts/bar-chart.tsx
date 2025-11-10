@@ -47,7 +47,7 @@ export function BarChart({
                 
                 {/* Bar */}
                 <div
-                  className="w-full rounded-t transition-all duration-300 hover:opacity-80"
+                  className="w-full rounded-t transition-opacity duration-300 hover:opacity-80"
                   style={{
                     height: `${barHeight}%`,
                     backgroundColor: color,

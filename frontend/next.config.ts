@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  compress: true,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'sonner'],
+  },
 };
 
 export default nextConfig;

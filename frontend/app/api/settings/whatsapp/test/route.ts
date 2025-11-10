@@ -97,12 +97,20 @@ export async function POST(request: NextRequest) {
 
       // Formatar dados das instâncias conforme docs oficiais
       // Docs: GET /instance/fetchInstances retorna array de objetos com a chave "instance"
+      // Observação: algumas versões da Evolution API expõem o estado de conexão
+      // no campo `connectionStatus` do objeto `instance`. Nosso mapeamento anterior
+      // considerava apenas `status`/`state`, o que pode resultar em "0 conectadas"
+      // mesmo quando a instância está com `connectionStatus = open/connected`.
+      // Abaixo incluímos `connectionStatus` e usamos esse campo como principal
+      // para determinar se a instância está conectada.
       const instances = Array.isArray(rawInstances)
         ? rawInstances.map((item: any) => {
             const inst = item.instance ?? item;
             return {
               name: inst.instanceName || inst.name || 'Desconhecido',
+              // preservar ambos para exibição
               status: inst.status || inst.state || 'unknown',
+              connectionStatus: inst.connectionStatus || inst.state || 'unknown',
               number: inst.phone || ownerToPhone(inst.owner),
               owner: inst.owner || 'Não disponível',
               profileName: inst.profileName || inst.profile?.name || 'Não disponível',
@@ -113,9 +121,33 @@ export async function POST(request: NextRequest) {
 
       // Verificar se há instâncias conectadas
       const connectedInstances = instances.filter((instance: any) => {
-        const s = String(instance.status || '').toLowerCase();
+        const s = String((instance.connectionStatus ?? instance.status) || '').toLowerCase();
         return s === 'open' || s === 'connected';
       });
+
+      // Registrar auditoria do último estado (sem segredos)
+      try {
+        await supabase.from('audit_logs').insert({
+          user_id: roleRow?.id ?? null,
+          tenant_id: null,
+          action: 'whatsapp_test',
+          resource_type: 'evolution_api',
+          resource_id: instance_name ?? null,
+          changes: {
+            connection_state: connectionState?.instance?.state ?? connectionState?.state ?? null,
+            total_instances: instances.length,
+            connected_instances: connectedInstances.length,
+            instances: instances.map((i: any) => ({
+              name: i.name,
+              status: i.status,
+              connectionStatus: i.connectionStatus,
+              number: i.number,
+            })),
+          },
+        });
+      } catch (auditErr) {
+        console.warn('Falha ao registrar auditoria do teste WhatsApp:', auditErr);
+      }
 
       return NextResponse.json({
         success: true,
