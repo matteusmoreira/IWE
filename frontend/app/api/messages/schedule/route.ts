@@ -1,21 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-type ScheduleBody = {
-  tenant_id: string;
-  channel: 'whatsapp' | 'email';
-  scheduled_for: string; // ISO string
-  recipient_phones?: string[];
-  to?: string[];
-  template_key?: string;
-  message?: string;
-  subject?: string;
-  html?: string;
-  variables?: Record<string, any>;
-  metadata?: Record<string, any>;
-};
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -23,8 +9,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body: ScheduleBody = await request.json();
-    const { tenant_id, channel, scheduled_for } = body;
+    const raw = (await request.json()) as Record<string, unknown>;
+    const tenant_id = typeof raw.tenant_id === 'string' ? raw.tenant_id : null;
+    const channel = typeof raw.channel === 'string' && (raw.channel === 'whatsapp' || raw.channel === 'email')
+      ? (raw.channel as 'whatsapp' | 'email')
+      : null;
+    const scheduled_for = typeof raw.scheduled_for === 'string' ? raw.scheduled_for : null;
     if (!tenant_id || !channel || !scheduled_for) {
       return NextResponse.json({ error: 'tenant_id, channel e scheduled_for são obrigatórios' }, { status: 400 });
     }
@@ -40,17 +30,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Monta dados do job
-    const baseMetadata = {
+    const baseMetadata: Record<string, unknown> = {
       channel,
-      template_key: body.template_key || null,
-      variables: body.variables || {},
-      ...(body.metadata || {}),
+      template_key: typeof raw.template_key === 'string' ? raw.template_key : null,
+      variables: (typeof raw.variables === 'object' && raw.variables !== null) ? raw.variables as Record<string, unknown> : {},
+      ...((typeof raw.metadata === 'object' && raw.metadata !== null) ? raw.metadata as Record<string, unknown> : {}),
     };
 
     // recipient_phones não pode ser null; usar [] para e-mail
-    const recipient_phones = channel === 'whatsapp' ? (body.recipient_phones || []) : [];
+    const recipient_phones = channel === 'whatsapp'
+      ? (Array.isArray(raw.recipient_phones) ? (raw.recipient_phones as unknown[]).map(v => String(v)) : [])
+      : [];
 
-    const insertPayload: any = {
+    const insertPayload: Record<string, unknown> = {
       tenant_id,
       template_id: null,
       recipient_phones,
@@ -58,10 +50,10 @@ export async function POST(request: NextRequest) {
       status: 'PENDING',
       metadata: {
         ...baseMetadata,
-        to: body.to || undefined,
-        subject: body.subject || undefined,
-        html: body.html || undefined,
-        message: body.message || undefined,
+        to: Array.isArray(raw.to) ? (raw.to as unknown[]).map(v => String(v)) : undefined,
+        subject: typeof raw.subject === 'string' ? raw.subject : undefined,
+        html: typeof raw.html === 'string' ? raw.html : undefined,
+        message: typeof raw.message === 'string' ? raw.message : undefined,
       },
       created_by: userRow.id,
     };
@@ -87,7 +79,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ job }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Schedule error:', error);
     return NextResponse.json({ error: 'Falha ao agendar' }, { status: 500 });
   }

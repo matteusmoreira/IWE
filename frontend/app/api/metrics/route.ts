@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
       .single();
 
     const isSuperAdmin = userData?.role === 'superadmin';
-    const adminTenantIds = userData?.admin_tenants?.map((at: any) => at.tenant_id) || [];
+    const adminTenantIds = Array.isArray(userData?.admin_tenants)
+      ? userData!.admin_tenants.map((at) => (at as { tenant_id: string | number }).tenant_id)
+      : [];
 
     // Definir intervalo de datas por mês/ano
     const now = new Date();
@@ -64,7 +66,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: paymentsData } = await paymentsQuery;
-    const totalRevenue = paymentsData?.reduce((sum, p) => sum + (Number(p.payment_amount) || 0), 0) || 0;
+    const totalRevenue = (Array.isArray(paymentsData)
+      ? paymentsData.reduce((sum, p) => sum + (Number(p.payment_amount) || 0), 0)
+      : 0) || 0;
 
     // Active forms
     let activeFormsQuery = supabase
@@ -94,8 +98,8 @@ export async function GET(request: NextRequest) {
 
     // Process submissions by day
     const dayMap = new Map<string, number>();
-    submissionsByDay?.forEach(s => {
-      const date = new Date(s.created_at).toISOString().split('T')[0];
+    (Array.isArray(submissionsByDay) ? submissionsByDay : []).forEach((s) => {
+      const date = new Date(s.created_at as string).toISOString().split('T')[0];
       dayMap.set(date, (dayMap.get(date) || 0) + 1);
     });
 
@@ -120,9 +124,9 @@ export async function GET(request: NextRequest) {
     const { data: revenueByDayData } = await revenueByDayQuery;
 
     const revenueDayMap = new Map<string, number>();
-    revenueByDayData?.forEach(s => {
-      const date = new Date(s.created_at).toISOString().split('T')[0];
-      revenueDayMap.set(date, (revenueDayMap.get(date) || 0) + (s.payment_amount || 0));
+    (Array.isArray(revenueByDayData) ? revenueByDayData : []).forEach((s) => {
+      const date = new Date(s.created_at as string).toISOString().split('T')[0];
+      revenueDayMap.set(date, (revenueDayMap.get(date) || 0) + (Number(s.payment_amount) || 0));
     });
 
     const revenueByDayArray = Array.from(revenueDayMap.entries()).map(([date, amount]) => ({
@@ -153,17 +157,19 @@ export async function GET(request: NextRequest) {
     }
     const { data: formData } = await formPerfQuery;
 
-    const formPerformance = formData?.map((form: any) => {
-      const submissions = form.submissions || [];
-      const approved = submissions.filter((s: any) => s.payment_status === 'PAGO').length;
+    const formPerformance = (Array.isArray(formData) ? formData : []).map((form) => {
+      const submissions = Array.isArray((form as Record<string, unknown>).submissions)
+        ? ((form as Record<string, unknown>).submissions as Array<Record<string, unknown>>)
+        : [];
+      const approved = submissions.filter((s) => s.payment_status === 'PAGO').length;
       return {
-        formId: form.id,
-        formTitle: form.name,
+        formId: (form as Record<string, unknown>).id,
+        formTitle: (form as Record<string, unknown>).name,
         submissions: submissions.length,
         conversions: approved,
         conversionRate: submissions.length > 0 ? (approved / submissions.length) * 100 : 0,
       };
-    }) || [];
+    });
 
     // Payment stats
     let paymentStatsQuery = supabase
@@ -200,7 +206,7 @@ export async function GET(request: NextRequest) {
       formPerformance,
       paymentStats,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fetching metrics:', error);
     return NextResponse.json({ error: 'Failed to fetch metrics' }, { status: 500 });
   }

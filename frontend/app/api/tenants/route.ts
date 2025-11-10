@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import type { Database } from '@/lib/supabase/client';
 
 // GET /api/tenants - Listar todos os tenants
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
 
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     // Buscar dados do usuário para verificar role
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('role')
+      .select('id, role')
       .eq('auth_user_id', user.id)
       .single();
 
@@ -34,14 +35,15 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ tenants, role: userData.role });
-  } catch (error: any) {
-    console.error('Error fetching tenants:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error fetching tenants:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // POST /api/tenants - Criar novo tenant
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const supabase = await createClient();
 
@@ -58,7 +60,9 @@ export async function POST(request: NextRequest) {
       .eq('auth_user_id', user.id)
       .single();
 
-    if (userError || userData?.role !== 'superadmin') {
+    type UserBasic = Pick<Database['public']['Tables']['users']['Row'], 'id' | 'role'>;
+    const userBasic = userData as UserBasic;
+    if (userError || userBasic?.role !== 'superadmin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -90,7 +94,7 @@ export async function POST(request: NextRequest) {
     // Registrar auditoria
     await supabase.from('audit_logs').insert({
       tenant_id: tenant.id,
-      user_id: userData.id,
+      user_id: userBasic.id,
       action: 'CREATE',
       resource_type: 'tenant',
       resource_id: tenant.id,
@@ -98,8 +102,9 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ tenant }, { status: 201 });
-  } catch (error: any) {
-    console.error('Error creating tenant:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error creating tenant:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

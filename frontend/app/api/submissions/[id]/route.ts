@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // Evitar qualquer cache para este handler
@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/submissions/[id] - Buscar submissão por ID
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -46,15 +46,16 @@ export async function GET(
     }
 
     return NextResponse.json({ submission });
-  } catch (error: any) {
-    console.error('Error fetching submission:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error fetching submission:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // PATCH /api/submissions/[id] - Atualizar submissão
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -93,7 +94,7 @@ export async function PATCH(
     }
 
     // Atualizar submissão
-    const updateData: any = {};
+    const updateData: { payment_status?: string; data?: unknown; metadata?: Record<string, unknown> } = {};
     if (payment_status) updateData.payment_status = payment_status;
     if (formData) updateData.data = formData;
     if (metadata) updateData.metadata = { ...oldSubmission.metadata, ...metadata };
@@ -122,15 +123,16 @@ export async function PATCH(
     });
 
     return NextResponse.json({ submission });
-  } catch (error: any) {
-    console.error('Error updating submission:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error updating submission:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // DELETE /api/submissions/[id] - Deletar submissão
 export async function DELETE(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -184,8 +186,9 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Error deleting submission:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error deleting submission:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

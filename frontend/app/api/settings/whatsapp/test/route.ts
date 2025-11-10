@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     try {
       // Se informado, testa o estado de conexão da instância específica
-      let connectionState: any = null;
+      let connectionState: unknown = null;
       if (instance_name) {
         const connResponse = await fetch(`${baseUrl}/instance/connectionState/${encodeURIComponent(instance_name)}`, {
           method: 'GET',
@@ -89,10 +89,19 @@ export async function POST(request: NextRequest) {
       const rawInstances = await instancesResponse.json();
 
       // Helper: extrai telefone do owner JID
-      const ownerToPhone = (owner: string | null | undefined) => {
-        if (!owner) return 'Não disponível';
-        const match = String(owner).match(/^(\d+)/);
+      const ownerToPhone = (owner: unknown) => {
+        const s = typeof owner === 'string' ? owner : undefined;
+        if (!s) return 'Não disponível';
+        const match = String(s).match(/^(\d+)/);
         return match ? match[1] : 'Não disponível';
+      };
+
+      const asRecord = (u: unknown): Record<string, unknown> =>
+        typeof u === 'object' && u !== null ? (u as Record<string, unknown>) : {};
+      const getString = (v: unknown): string | undefined => {
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        return undefined;
       };
 
       // Formatar dados das instâncias conforme docs oficiais
@@ -103,30 +112,52 @@ export async function POST(request: NextRequest) {
       // mesmo quando a instância está com `connectionStatus = open/connected`.
       // Abaixo incluímos `connectionStatus` e usamos esse campo como principal
       // para determinar se a instância está conectada.
-      const instances = Array.isArray(rawInstances)
-        ? rawInstances.map((item: any) => {
-            const inst = item.instance ?? item;
+      type InstanceInfo = {
+        name: string;
+        status: string;
+        connectionStatus: string;
+        number: string | null;
+        owner: string;
+        profileName: string;
+        profilePictureUrl: string | null;
+      };
+
+      const instances: InstanceInfo[] = Array.isArray(rawInstances)
+        ? rawInstances.map((item: unknown) => {
+            const itemRec = asRecord(item);
+            const inst = asRecord(itemRec.instance ?? item);
+            const name = getString(inst.instanceName) ?? getString(inst.name) ?? 'Desconhecido';
+            const status = getString(inst.status) ?? getString(inst.state) ?? 'unknown';
+            const connectionStatus = getString(inst.connectionStatus) ?? getString(inst.state) ?? 'unknown';
+            const number = getString(inst.phone) ?? ownerToPhone(inst.owner);
+            const owner = getString(inst.owner) ?? 'Não disponível';
+            const profileRec = asRecord(inst.profile);
+            const profileName = getString(inst.profileName) ?? getString(profileRec.name) ?? 'Não disponível';
+            const profilePictureUrl = getString(inst.profilePictureUrl) ?? getString(profileRec.picture) ?? null;
             return {
-              name: inst.instanceName || inst.name || 'Desconhecido',
-              // preservar ambos para exibição
-              status: inst.status || inst.state || 'unknown',
-              connectionStatus: inst.connectionStatus || inst.state || 'unknown',
-              number: inst.phone || ownerToPhone(inst.owner),
-              owner: inst.owner || 'Não disponível',
-              profileName: inst.profileName || inst.profile?.name || 'Não disponível',
-              profilePictureUrl: inst.profilePictureUrl || inst.profile?.picture || null,
+              name,
+              status,
+              connectionStatus,
+              number: number ?? null,
+              owner,
+              profileName,
+              profilePictureUrl,
             };
           })
         : [];
 
       // Verificar se há instâncias conectadas
-      const connectedInstances = instances.filter((instance: any) => {
+      const connectedInstances = instances.filter((instance) => {
         const s = String((instance.connectionStatus ?? instance.status) || '').toLowerCase();
         return s === 'open' || s === 'connected';
       });
 
       // Registrar auditoria do último estado (sem segredos)
       try {
+        const connStateObj = asRecord(connectionState);
+        const connStateInstance = asRecord(connStateObj.instance);
+        const connection_state = getString(connStateInstance.state) ?? getString(connStateObj.state) ?? null;
+
         await supabase.from('audit_logs').insert({
           user_id: roleRow?.id ?? null,
           tenant_id: null,
@@ -134,10 +165,10 @@ export async function POST(request: NextRequest) {
           resource_type: 'evolution_api',
           resource_id: instance_name ?? null,
           changes: {
-            connection_state: connectionState?.instance?.state ?? connectionState?.state ?? null,
+            connection_state,
             total_instances: instances.length,
             connected_instances: connectedInstances.length,
-            instances: instances.map((i: any) => ({
+            instances: instances.map((i) => ({
               name: i.name,
               status: i.status,
               connectionStatus: i.connectionStatus,
@@ -153,15 +184,15 @@ export async function POST(request: NextRequest) {
         success: true,
         message: `Conexão bem-sucedida! ${instances.length} instância(s) encontrada(s), ${connectedInstances.length} conectada(s).`,
         instances,
-        connection_state: connectionState?.instance?.state ?? connectionState?.state ?? null,
+        connection_state,
         total_instances: instances.length,
         connected_instances: connectedInstances.length
       });
 
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
       clearTimeout(timeoutId);
       
-      if (fetchError.name === 'AbortError') {
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
         return NextResponse.json({
           success: false,
           error: 'Timeout na conexão. Verifique se a URL está correta e a API está acessível.',
@@ -172,17 +203,17 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: false,
-        error: `Erro de conexão: ${fetchError.message}`,
+        error: `Erro de conexão: ${fetchError instanceof Error ? fetchError.message : 'Erro desconhecido'}`,
         instances: [],
         connection_status: 'connection_error'
       }, { status: 500 });
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('WhatsApp test error:', error);
     return NextResponse.json({
       success: false,
-      error: `Erro interno: ${error.message}`,
+      error: `Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
       instances: [],
       connection_status: 'internal_error'
     }, { status: 500 });

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/resend';
 
@@ -8,7 +8,7 @@ const supabase = createClient(
 );
 
 // POST /api/webhooks/mercadopago - Webhook do Mercado Pago
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const body = await request.json();
     
@@ -62,9 +62,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
-    console.error('Webhook error:', error);
-    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Webhook processing failed';
+    console.error('Webhook error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -77,6 +78,16 @@ export async function GET() {
 }
 
 // Função auxiliar para processar o webhook
+type SubmissionRow = {
+  id: string;
+  tenant_id: string;
+  tenants?: { name?: string } | null;
+  tenant_name?: string | null;
+  data: Record<string, unknown>;
+  payment_amount?: number | null;
+  payment_date?: string | null;
+};
+
 async function processPaymentWebhook(paymentId: string, eventId?: string) {
   try {
     // Buscar submission pelo payment_external_id
@@ -179,24 +190,25 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
     // Se pagamento aprovado, disparar ações automáticas
     if (payment.status === 'approved') {
       // 1. Enviar WhatsApp (se configurado)
-      await sendWhatsAppNotification(submission);
+      await sendWhatsAppNotification(submission as SubmissionRow);
 
       // 2. Enviar para n8n/Moodle (se configurado)
-      await sendToMoodle(submission);
+      await sendToMoodle(submission as SubmissionRow);
 
       // 3. Enviar E-mail (Resend), se configurado
-      await sendEmailNotification(submission);
+      await sendEmailNotification(submission as SubmissionRow);
     }
 
     console.log('Payment webhook processed successfully:', paymentId);
-  } catch (error) {
-    console.error('Error in processPaymentWebhook:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error in processPaymentWebhook:', message);
     // Sem atualização de status na payment_events (schema atual não possui coluna de status)
   }
 }
 
 // Função auxiliar para enviar WhatsApp
-async function sendWhatsAppNotification(submission: any) {
+async function sendWhatsAppNotification(submission: SubmissionRow) {
   try {
     // Buscar configuração WhatsApp GLOBAL
     const { data: whatsappConfig } = await supabase
@@ -228,26 +240,28 @@ async function sendWhatsAppNotification(submission: any) {
     }
 
     // Extrair número de telefone
-    const phone = submission.data.telefone || submission.data.phone || '';
+    const phone = String((submission.data as Record<string, unknown>).telefone ?? (submission.data as Record<string, unknown>).phone ?? '');
     if (!phone) {
       console.log('No phone number in submission');
       return;
     }
 
     // Preparar variáveis para o template (alinhado aos seeds)
-    const variables = {
-      nome_completo: submission.data.nome_completo || submission.data.nome || submission.data.name || 'Aluno',
-      curso: submission.data.curso || submission.data.course || '',
-      polo: submission.tenants?.name || submission.tenant_name || '',
+    const sdata = submission.data as Record<string, unknown>;
+    const variables: Record<string, unknown> = {
+      nome_completo: (sdata.nome_completo as string) ?? (sdata.nome as string) ?? (sdata.name as string) ?? 'Aluno',
+      curso: (sdata.curso as string) ?? (sdata.course as string) ?? '',
+      polo: submission.tenants?.name ?? submission.tenant_name ?? '',
       valor: submission.payment_amount != null ? Number(submission.payment_amount).toFixed(2) : '0.00',
-      ...submission.data,
+      ...sdata,
     };
 
     // Substituir variáveis no template usando util
     // Evita substituições quebradas e mantém placeholders não encontrados
     // import implícito: util fica no lado do cliente; replicamos logicamente aqui
     const message = template.content.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-      return variables[key] !== undefined ? String(variables[key]) : match;
+      const v = variables as Record<string, unknown>;
+      return v[key] !== undefined ? String(v[key]) : match;
     });
 
     // Normalizar telefone para Evolution API (E.164 simplificado)
@@ -300,25 +314,26 @@ async function sendWhatsAppNotification(submission: any) {
     });
 
     console.log('WhatsApp notification sent successfully');
-  } catch (error) {
-    console.error('Error sending WhatsApp:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error sending WhatsApp:', message);
     try {
       await supabase.from('message_logs').insert({
         tenant_id: submission.tenant_id,
         submission_id: submission.id,
-        recipient_phone: submission.data.telefone || submission.data.phone || '',
+        recipient_phone: String((submission.data as Record<string, unknown>).telefone ?? (submission.data as Record<string, unknown>).phone ?? ''),
         message_content: 'Erro ao enviar mensagem',
         status: 'FAILED',
-        error_message: String(error).slice(0, 300),
+        error_message: message.slice(0, 300),
       });
-    } catch (e) {
+    } catch {
       // evita crash em erro de log
     }
   }
 }
 
 // Função auxiliar para enviar E-mail via Resend
-async function sendEmailNotification(submission: any) {
+async function sendEmailNotification(submission: SubmissionRow) {
   try {
     if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) {
       // Não configurado, ignorar silenciosamente
@@ -326,7 +341,8 @@ async function sendEmailNotification(submission: any) {
     }
 
     // Extrair e-mail do aluno
-    const email = submission.data.email || submission.data.contato_email || submission.data['e-mail'] || submission.data['email_contato'] || '';
+    const sdata = submission.data as Record<string, unknown>;
+    const email = String(sdata.email ?? sdata.contato_email ?? sdata['e-mail' as keyof typeof sdata] ?? sdata['email_contato' as keyof typeof sdata] ?? '');
     if (!email) {
       console.log('No email in submission');
       return;
@@ -341,12 +357,12 @@ async function sendEmailNotification(submission: any) {
       .eq('is_active', true)
       .single();
 
-    const variables = {
-      nome_completo: submission.data.nome_completo || submission.data.nome || submission.data.name || 'Aluno',
-      curso: submission.data.curso || submission.data.course || '',
-      polo: submission.tenants?.name || submission.tenant_name || '',
+    const variables: Record<string, unknown> = {
+      nome_completo: (sdata.nome_completo as string) ?? (sdata.nome as string) ?? (sdata.name as string) ?? 'Aluno',
+      curso: (sdata.curso as string) ?? (sdata.course as string) ?? '',
+      polo: submission.tenants?.name ?? submission.tenant_name ?? '',
       valor: submission.payment_amount != null ? Number(submission.payment_amount).toFixed(2) : '0.00',
-      ...submission.data,
+      ...sdata,
     };
 
     const subject = template?.title || 'Confirmação de pagamento';
@@ -368,13 +384,14 @@ async function sendEmailNotification(submission: any) {
       resource_id: template?.id || null,
       details: { message: 'Email pós-pagamento enviado', to: '***' },
     });
-  } catch (error) {
-    console.error('Error sending Email:', String(error).slice(0, 300));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error sending Email:', message.slice(0, 300));
   }
 }
 
 // Função auxiliar para enviar para Moodle via n8n
-async function sendToMoodle(submission: any) {
+async function sendToMoodle(submission: SubmissionRow) {
   try {
     // Buscar configuração webhook
     const { data: webhookConfig } = await supabase
@@ -391,11 +408,11 @@ async function sendToMoodle(submission: any) {
     }
 
     // Preparar payload
-    const payload = {
+    const payload: Record<string, unknown> = {
       submission_id: submission.id,
       tenant_id: submission.tenant_id,
-      tenant_name: submission.tenants.name,
-      student_data: submission.data,
+      tenant_name: submission.tenants?.name,
+      student_data: submission.data as Record<string, unknown>,
       payment_amount: submission.payment_amount,
       payment_date: submission.payment_date,
     };
@@ -430,15 +447,16 @@ async function sendToMoodle(submission: any) {
     });
 
     console.log('Moodle enrollment webhook sent:', success ? 'SUCCESS' : 'FAILED');
-  } catch (error) {
-    console.error('Error sending to Moodle:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Error sending to Moodle:', message);
     
     // Registrar erro
     await supabase.from('enrollment_logs').insert({
       tenant_id: submission.tenant_id,
       submission_id: submission.id,
       status: 'FAILED',
-      error_message: error instanceof Error ? error.message : 'Unknown error',
+      error_message: message || 'Unknown error',
       attempt_count: 1,
       last_attempt_at: new Date().toISOString(),
     });

@@ -12,6 +12,10 @@ function getSupabaseHostname() {
 }
 
 const nextConfig: NextConfig = {
+  eslint: {
+    // Revertido: falhar build em erros de lint (padrão Next.js). Avisos continuam não bloqueando.
+    ignoreDuringBuilds: false,
+  },
   images: {
     remotePatterns: [
       {

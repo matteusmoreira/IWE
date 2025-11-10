@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/utils';
 
 // GET /api/forms - Listar todos os formulários
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient();
 
@@ -51,7 +51,9 @@ export async function GET(request: NextRequest) {
 
     // Filtrar por tenants se não for superadmin
     if (userData.role !== 'superadmin') {
-      const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
+      const tenantIds = Array.isArray(userData.admin_tenants)
+        ? userData.admin_tenants.map((at) => (at as { tenant_id: string | number }).tenant_id)
+        : [];
       if (tenantIds.length === 0) {
         // Admin sem polos: ainda pode ver formulários globais
         query = query.is('tenant_id', null);
@@ -68,20 +70,33 @@ export async function GET(request: NextRequest) {
     }
 
     // Ordenar campos por order_index
-    const formsWithSortedFields = forms?.map(form => ({
-      ...form,
-      form_fields: form.form_fields?.sort((a: any, b: any) => a.order_index - b.order_index) || []
-    }));
+    const sortByOrderIndex = (arr: unknown[]): unknown[] => {
+      return [...arr].sort((a, b) => {
+        const ao = (a as Record<string, unknown>).order_index;
+        const bo = (b as Record<string, unknown>).order_index;
+        return Number(ao ?? 0) - Number(bo ?? 0);
+      });
+    };
+
+    const formsWithSortedFields = Array.isArray(forms)
+      ? forms.map((form) => ({
+          ...form,
+          form_fields: Array.isArray((form as Record<string, unknown>).form_fields)
+            ? sortByOrderIndex(((form as Record<string, unknown>).form_fields as unknown[]))
+            : [],
+        }))
+      : [];
 
     return NextResponse.json({ forms: formsWithSortedFields });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching forms:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // POST /api/forms - Criar novo formulário
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const supabase = await createClient();
 
@@ -115,7 +130,9 @@ export async function POST(request: NextRequest) {
     // Verificar se usuário tem acesso ao tenant
     if (userData.role !== 'superadmin') {
       // Admin deve informar um tenant válido
-      const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
+      const tenantIds = Array.isArray(userData.admin_tenants)
+        ? userData.admin_tenants.map((at) => (at as { tenant_id: string | number }).tenant_id)
+        : [];
       if (!tenant_id) {
         return NextResponse.json({ error: 'Admins devem selecionar um polo' }, { status: 400 });
       }
@@ -134,7 +151,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Buscar slugs existentes que começam com o baseSlug para evitar colisão
-    let existingSlugs: any[] = [];
+    let existingSlugs: Array<{ slug?: string }> = [];
     if (tenant_id) {
       const { data } = await supabase
         .from('form_definitions')
@@ -153,7 +170,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (existingSlugs && existingSlugs.length > 0) {
-      const used = new Set(existingSlugs.map((r: any) => r.slug));
+      const used = new Set(existingSlugs.map((r) => String(r.slug ?? '')));
       if (used.has(slugCandidate)) {
         let i = 2;
         while (used.has(`${baseSlug}-${i}`)) i++;
@@ -180,19 +197,26 @@ export async function POST(request: NextRequest) {
     }
 
     // Criar campos se fornecidos
-    if (fields && fields.length > 0) {
-      const formFields = fields.map((field: any, index: number) => ({
-        form_definition_id: form.id,
-        label: field.label,
-        name: field.name,
-        type: field.type,
-        required: field.required ?? false,
-        placeholder: field.placeholder || null,
-        options: field.options || [],
-        validation_rules: field.validation_rules || {},
-        order_index: field.order_index ?? index,
-        is_active: field.is_active ?? true,
-      }));
+    if (Array.isArray(fields) && fields.length > 0) {
+      const formFields = fields.map((field, index: number) => {
+        const f = field as Record<string, unknown>;
+        const options = Array.isArray(f.options) ? (f.options as unknown[]) : [];
+        const validation_rules = typeof f.validation_rules === 'object' && f.validation_rules !== null
+          ? (f.validation_rules as Record<string, unknown>)
+          : {};
+        return {
+          form_definition_id: form.id,
+          label: String(f.label ?? ''),
+          name: String(f.name ?? ''),
+          type: String(f.type ?? ''),
+          required: Boolean(f.required ?? false),
+          placeholder: (typeof f.placeholder === 'string' ? f.placeholder : null),
+          options,
+          validation_rules,
+          order_index: typeof f.order_index === 'number' ? f.order_index : index,
+          is_active: Boolean(f.is_active ?? true),
+        };
+      });
 
       const { error: fieldsError } = await supabase
         .from('form_fields')
@@ -236,8 +260,9 @@ export async function POST(request: NextRequest) {
       .single();
 
     return NextResponse.json({ form: completeForm }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating form:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

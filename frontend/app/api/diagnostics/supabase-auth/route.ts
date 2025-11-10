@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server'
+// import { NextRequest } from 'next/server'
 
 // Pequeno diagnóstico para validar a ANON KEY do Supabase sem expor segredos.
 // Faz um GET em /auth/v1/settings usando o apikey do ambiente e retorna apenas o status.
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -35,14 +35,8 @@ export async function GET(_req: NextRequest) {
       },
       { status: resp.ok ? 200 : 200 }
     )
-  } catch (e: any) {
-    return Response.json(
-      {
-        ok: false,
-        status: 500,
-        error: e?.message || 'Falha ao contatar Supabase Auth',
-      },
-      { status: 500 }
-    )
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Falha ao contatar Supabase Auth';
+    return Response.json({ ok: false, status: 500, error: message }, { status: 500 })
   }
 }

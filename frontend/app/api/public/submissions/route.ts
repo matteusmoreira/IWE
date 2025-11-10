@@ -1,18 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-// Cliente público do Supabase
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Cliente público do Supabase removido (não utilizado neste endpoint)
 
 // POST /api/public/submissions - Criar nova submissão (público)
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { form_id, data: formData, tenant_id } = body;
+    const body = (await request.json()) as Record<string, unknown>;
+    const form_id = (typeof body.form_id === 'string' || typeof body.form_id === 'number') ? body.form_id : null;
+    const formData = (typeof body.data === 'object' && body.data !== null) ? (body.data as Record<string, unknown>) : null;
+    const tenant_id = (typeof body.tenant_id === 'string' || typeof body.tenant_id === 'number') ? body.tenant_id : null;
 
     if (!form_id || !formData) {
       return NextResponse.json(
@@ -52,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     // Validar e resolver tenant da submissão
     // Reutilizar admin client já criado para validar tenant
-    let tenantToUse: { id: string; name: string; status: boolean } | null = null;
+    let tenantToUse: { id: string | number; name: string; status: boolean } | null = null;
 
     if (form.tenant_id) {
       // Formulário vinculado a um polo específico: deve usar o mesmo polo
@@ -82,7 +79,11 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      tenantToUse = fixedTenant as any;
+      tenantToUse = {
+        id: fixedTenant.id,
+        name: fixedTenant.name,
+        status: fixedTenant.status === true,
+      };
     } else {
       // Formulário global: tenant_id é obrigatório
       if (!tenant_id) {
@@ -110,86 +111,99 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      tenantToUse = selectedTenant as any;
+      tenantToUse = {
+        id: selectedTenant.id,
+        name: selectedTenant.name,
+        status: selectedTenant.status === true,
+      };
     }
 
     // Validar campos obrigatórios
-    const requiredFields = form.form_fields?.filter((field: any) => field.required);
-    const missingFields = requiredFields?.filter(
-      (field: any) => !formData[field.name] || formData[field.name] === ''
-    );
+    const fields = Array.isArray(form.form_fields) ? (form.form_fields as Array<Record<string, unknown>>) : [];
+    const requiredFields = fields.filter((f) => Boolean(f.required));
+    const missingFields = requiredFields.filter((f) => {
+      const fname = String(f.name ?? '').trim();
+      const val = formData ? formData[fname] : undefined;
+      return val === undefined || val === null || String(val) === '';
+    });
 
     if (missingFields && missingFields.length > 0) {
       return NextResponse.json(
         {
           error: 'Campos obrigatórios não preenchidos',
-          missing_fields: missingFields.map((f: any) => f.name),
+          missing_fields: missingFields.map((f) => String(f.name ?? '')),
         },
         { status: 400 }
       );
     }
 
     // Validar tipos de dados
-    for (const field of form.form_fields || []) {
-      const value = formData[field.name];
+    for (const fieldRaw of fields) {
+      const fname = String(fieldRaw.name ?? '').trim();
+      const value = formData ? formData[fname] : undefined;
+      const type = String(fieldRaw.type ?? '').toLowerCase();
+      const vr = (typeof fieldRaw.validation_rules === 'object' && fieldRaw.validation_rules !== null)
+        ? (fieldRaw.validation_rules as Record<string, unknown>)
+        : {};
       
       if (!value) continue; // Pula se não foi preenchido (já validamos required acima)
 
       // Validação de email
-      if (field.type === 'email' && value) {
+      if (type === 'email' && value) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(value)) {
+        if (!emailRegex.test(String(value))) {
           return NextResponse.json(
-            { error: `Campo ${field.name} deve ser um email válido` },
+            { error: `Campo ${fname} deve ser um email válido` },
             { status: 400 }
           );
         }
       }
 
       // Validação de CPF (formato básico)
-      if (field.type === 'cpf' && value) {
+      if (type === 'cpf' && value) {
         const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
-        if (!cpfRegex.test(value)) {
+        if (!cpfRegex.test(String(value))) {
           return NextResponse.json(
-            { error: `Campo ${field.name} deve ser um CPF válido (000.000.000-00)` },
+            { error: `Campo ${fname} deve ser um CPF válido (000.000.000-00)` },
             { status: 400 }
           );
         }
       }
 
       // Validação de CEP
-      if (field.type === 'cep' && value) {
+      if (type === 'cep' && value) {
         const cepRegex = /^\d{5}-\d{3}$/;
-        if (!cepRegex.test(value)) {
+        if (!cepRegex.test(String(value))) {
           return NextResponse.json(
-            { error: `Campo ${field.name} deve ser um CEP válido (00000-000)` },
+            { error: `Campo ${fname} deve ser um CEP válido (00000-000)` },
             { status: 400 }
           );
         }
       }
 
       // Validação de número
-      if (field.type === 'number' && value) {
-        if (isNaN(Number(value))) {
+      if (type === 'number' && value) {
+        const numVal = Number(value);
+        if (Number.isNaN(numVal)) {
           return NextResponse.json(
-            { error: `Campo ${field.name} deve ser um número` },
+            { error: `Campo ${fname} deve ser um número` },
             { status: 400 }
           );
         }
 
         // Validar min/max se definidos
-        if (field.validation_rules?.min !== undefined) {
-          if (Number(value) < field.validation_rules.min) {
+        if (vr.min !== undefined) {
+          if (numVal < Number(vr.min)) {
             return NextResponse.json(
-              { error: `Campo ${field.name} deve ser no mínimo ${field.validation_rules.min}` },
+              { error: `Campo ${fname} deve ser no mínimo ${vr.min}` },
               { status: 400 }
             );
           }
         }
-        if (field.validation_rules?.max !== undefined) {
-          if (Number(value) > field.validation_rules.max) {
+        if (vr.max !== undefined) {
+          if (numVal > Number(vr.max)) {
             return NextResponse.json(
-              { error: `Campo ${field.name} deve ser no máximo ${field.validation_rules.max}` },
+              { error: `Campo ${fname} deve ser no máximo ${vr.max}` },
               { status: 400 }
             );
           }
@@ -197,16 +211,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Validação de comprimento de texto
-      if ((field.type === 'text' || field.type === 'textarea') && value) {
-        if (field.validation_rules?.minLength && value.length < field.validation_rules.minLength) {
+      if ((type === 'text' || type === 'textarea') && value) {
+        const strVal = String(value);
+        const minLen = (vr.minLength !== undefined ? Number(vr.minLength) : undefined);
+        const maxLen = (vr.maxLength !== undefined ? Number(vr.maxLength) : undefined);
+        if (minLen !== undefined && strVal.length < minLen) {
           return NextResponse.json(
-            { error: `Campo ${field.name} deve ter no mínimo ${field.validation_rules.minLength} caracteres` },
+            { error: `Campo ${fname} deve ter no mínimo ${minLen} caracteres` },
             { status: 400 }
           );
         }
-        if (field.validation_rules?.maxLength && value.length > field.validation_rules.maxLength) {
+        if (maxLen !== undefined && strVal.length > maxLen) {
           return NextResponse.json(
-            { error: `Campo ${field.name} deve ter no máximo ${field.validation_rules.maxLength} caracteres` },
+            { error: `Campo ${fname} deve ter no máximo ${maxLen} caracteres` },
             { status: 400 }
           );
         }
@@ -217,12 +234,11 @@ export async function POST(request: NextRequest) {
     // - Identifica dinamicamente os campos de nome e cpf do formulário
     // - Bloqueia nova submissão quando já existir registro com mesmo CPF
     //   (e opcionalmente mesmo nome) em qualquer formulário do sistema.
-    const cpfField = (form.form_fields || []).find((f: any) => f.type === 'cpf')?.name;
-    const nameField = (form.form_fields || [])
-      .find((f: any) => {
-        const n = (f.name || '').toLowerCase();
-        return ['nome_completo', 'nome', 'name'].includes(n);
-      })?.name;
+    const cpfField = fields.find((f) => String(f.type ?? '').toLowerCase() === 'cpf')?.name as string | undefined;
+    const nameField = fields.find((f) => {
+      const n = String(f.name ?? '').toLowerCase();
+      return ['nome_completo', 'nome', 'name'].includes(n);
+    })?.name as string | undefined;
 
     const cpfValueRaw = cpfField ? formData[cpfField] : null;
     const nameValueRaw = nameField ? formData[nameField] : null;
@@ -265,6 +281,15 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || null;
 
     // Criar submissão
+    const settings = (typeof form.settings === 'object' && form.settings !== null)
+      ? (form.settings as Record<string, unknown>)
+      : {};
+    const require_payment = Boolean((settings as Record<string, unknown>).require_payment ?? false);
+    const payment_amount = Number((settings as Record<string, unknown>).payment_amount ?? 0);
+    const form_title = typeof (settings as Record<string, unknown>).form_title === 'string'
+      ? (settings as Record<string, unknown>).form_title as string
+      : 'Formulário';
+
     const { data: submission, error: submissionError } = await admin
       .from('submissions')
       .insert({
@@ -273,16 +298,16 @@ export async function POST(request: NextRequest) {
         form_definition_id: form_id,
         data: formData,
         // Definir status de pagamento apenas quando aplicável (evita enum inválido)
-        ...(form.settings?.require_payment ? { payment_status: 'PENDENTE' } : {}),
+        ...(require_payment ? { payment_status: 'PENDENTE' } : {}),
         // Persistir o valor previsto do pagamento na submissão para métricas e consistência
-        ...(form.settings?.require_payment
-          ? { payment_amount: Number(form.settings?.payment_amount ?? 0) }
+        ...(require_payment
+          ? { payment_amount }
           : {}),
         ip_address: ip,
         user_agent: userAgent,
         metadata: {
           submitted_at: new Date().toISOString(),
-          form_title: form.settings?.form_title || 'Formulário',
+          form_title,
         },
       })
       .select()
@@ -297,12 +322,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Se requer pagamento, retornar info para redirecionar ao checkout
-    if (form.settings?.require_payment) {
+    if (require_payment) {
       return NextResponse.json({
         success: true,
         submission_id: submission.id,
         requires_payment: true,
-        payment_amount: form.settings.payment_amount || 0,
+        payment_amount,
         message: 'Submissão criada. Redirecionando para pagamento...',
       });
     }
@@ -312,10 +337,14 @@ export async function POST(request: NextRequest) {
       success: true,
       submission_id: submission.id,
       requires_payment: false,
-      message: form.settings?.success_message || 'Formulário enviado com sucesso!',
-      redirect_url: form.settings?.redirect_url || null,
+      message: typeof (settings as Record<string, unknown>).success_message === 'string'
+        ? ((settings as Record<string, unknown>).success_message as string)
+        : 'Formulário enviado com sucesso!',
+      redirect_url: typeof (settings as Record<string, unknown>).redirect_url === 'string'
+        ? ((settings as Record<string, unknown>).redirect_url as string)
+        : null,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in public submission:', error);
     return NextResponse.json(
       { error: 'Erro ao processar submissão' },

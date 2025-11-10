@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Upload, X, File as FileIcon, Loader2 } from 'lucide-react';
+import { Upload, X, File as FileIcon } from 'lucide-react';
+import Image from 'next/image';
 import { Button } from './button';
 import { toast } from 'sonner';
 
@@ -25,7 +26,7 @@ export function FileUpload({
   disabled = false,
   showPreview = false,
 }: FileUploadProps) {
-  const [uploading, setUploading] = useState(false);
+  // Removido estado de uploading por não ser utilizado
   const [preview, setPreview] = useState<string | null>(value || null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isImage, setIsImage] = useState<boolean>(false);
@@ -76,13 +77,7 @@ export function FileUpload({
     onFileSelect(null);
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-  };
+  // Removido: formatFileSize (não utilizado)
 
   return (
     <div className="space-y-2">
@@ -91,7 +86,7 @@ export function FileUpload({
         type="file"
         accept={accept}
         onChange={handleFileChange}
-        disabled={disabled || uploading}
+        disabled={disabled}
         className="hidden"
       />
 
@@ -115,11 +110,14 @@ export function FileUpload({
       ) : (
         <div className="border rounded-lg p-4">
           {showPreview && isImage && preview ? (
-            <div className="relative">
-              <img 
-                src={preview} 
-                alt="Preview" 
-                className="w-full h-48 object-contain rounded"
+            <div className="relative w-full h-48">
+              <Image
+                src={preview}
+                alt="Preview"
+                fill
+                className="object-contain rounded"
+                sizes="100vw"
+                priority={false}
               />
               {!disabled && (
                 <Button

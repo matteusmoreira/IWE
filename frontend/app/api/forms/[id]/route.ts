@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // GET /api/forms/[id] - Buscar formulário por ID
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -46,19 +46,21 @@ export async function GET(
 
     // Ordenar campos por order_index
     if (form.form_fields) {
-      form.form_fields.sort((a: any, b: any) => a.order_index - b.order_index);
+      const ff = form.form_fields as Array<Record<string, unknown>>;
+      ff.sort((a, b) => Number(a.order_index ?? 0) - Number(b.order_index ?? 0));
     }
 
     return NextResponse.json({ form });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching form:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // PATCH /api/forms/[id] - Atualizar formulário
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -82,9 +84,22 @@ export async function PATCH(
     }
 
     // Parse do body
-    const body = await request.json();
-    const { description, is_active, settings, fields, tenant_id } = body;
-    const name: string | undefined = body.name ?? body.title;
+    const body = (await request.json()) as Record<string, unknown>;
+    const name: string | undefined =
+      (typeof body.name === 'string' ? body.name : undefined) ??
+      (typeof body.title === 'string' ? body.title : undefined);
+    const description = typeof body.description === 'string' ? body.description : undefined;
+    const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
+    const settings = typeof body.settings === 'object' && body.settings !== null
+      ? (body.settings as Record<string, unknown>)
+      : undefined;
+    const fields = Array.isArray(body.fields) ? body.fields : undefined;
+    const tenant_id =
+      typeof body.tenant_id === 'string' || typeof body.tenant_id === 'number'
+        ? (body.tenant_id as string | number)
+        : body.tenant_id === null
+        ? null
+        : undefined;
 
     // Buscar form antigo para auditoria
     const { data: oldForm } = await supabase
@@ -99,14 +114,16 @@ export async function PATCH(
 
     // Verificar se usuário tem acesso ao tenant do form
     if (userData.role !== 'superadmin') {
-      const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
+      const tenantIds = Array.isArray(userData.admin_tenants)
+        ? userData.admin_tenants.map((at) => (at as { tenant_id: string | number }).tenant_id)
+        : [];
       if (!tenantIds.includes(oldForm.tenant_id)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
 
     // Atualizar formulário
-    const { data: form, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('form_definitions')
       .update({
         ...(name && { name }),
@@ -135,19 +152,26 @@ export async function PATCH(
         .eq('form_definition_id', params.id);
 
       // Criar novos campos
-      if (fields.length > 0) {
-        const formFields = fields.map((field: any, index: number) => ({
-          form_definition_id: params.id,
-          label: field.label,
-          name: field.name,
-          type: field.type,
-          required: field.required ?? false,
-          placeholder: field.placeholder || null,
-          options: field.options || [],
-          validation_rules: field.validation_rules || {},
-          order_index: field.order_index ?? index,
-          is_active: field.is_active ?? true,
-        }));
+      if (Array.isArray(fields) && fields.length > 0) {
+        const formFields = fields.map((field, index: number) => {
+          const f = field as Record<string, unknown>;
+          const options = Array.isArray(f.options) ? (f.options as unknown[]) : [];
+          const validation_rules = typeof f.validation_rules === 'object' && f.validation_rules !== null
+            ? (f.validation_rules as Record<string, unknown>)
+            : {};
+          return {
+            form_definition_id: params.id,
+            label: String(f.label ?? ''),
+            name: String(f.name ?? ''),
+            type: String(f.type ?? ''),
+            required: Boolean(f.required ?? false),
+            placeholder: (typeof f.placeholder === 'string' ? f.placeholder : null),
+            options,
+            validation_rules,
+            order_index: typeof f.order_index === 'number' ? f.order_index : index,
+            is_active: Boolean(f.is_active ?? true),
+          };
+        });
 
         const { error: fieldsError } = await supabase
           .from('form_fields')
@@ -193,15 +217,16 @@ export async function PATCH(
       .single();
 
     return NextResponse.json({ form: completeForm });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating form:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // DELETE /api/forms/[id] - Deletar formulário
 export async function DELETE(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -237,14 +262,16 @@ export async function DELETE(
 
     // Verificar se usuário tem acesso ao tenant do form
     if (userData.role !== 'superadmin') {
-      const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
+      const tenantIds = Array.isArray(userData.admin_tenants)
+        ? userData.admin_tenants.map((at) => (at as { tenant_id: string | number }).tenant_id)
+        : [];
       if (!tenantIds.includes(form.tenant_id)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
 
     // Verificar se há submissões vinculadas
-    const { data: submissions, error: submissionsError } = await supabase
+    const { data: submissions } = await supabase
       .from('submissions')
       .select('id')
       .eq('form_definition_id', params.id)
@@ -277,8 +304,9 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting form:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

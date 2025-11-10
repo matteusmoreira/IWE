@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
@@ -34,7 +34,7 @@ export default function PublicFormPage() {
 
   useEffect(() => {
     fetchForm();
-  }, [formId]);
+  }, [fetchForm]);
 
   useEffect(() => {
     const fetchTenants = async () => {
@@ -54,7 +54,7 @@ export default function PublicFormPage() {
     fetchTenants();
   }, []);
 
-  const fetchForm = async () => {
+  const fetchForm = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/public/forms/${formId}`);
@@ -92,7 +92,7 @@ export default function PublicFormPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formId, router]);
 
   const validateField = (field: FormField, value: any): string | null => {
     // Regras específicas para campo de aceite (checkbox único)
@@ -181,14 +181,9 @@ export default function PublicFormPage() {
 
   const handleCheckboxChange = (fieldName: string, optionValue: string, checked: boolean) => {
     const currentValues = formData[fieldName] || [];
-    let newValues;
-    
-    if (checked) {
-      newValues = [...currentValues, optionValue];
-    } else {
-      newValues = currentValues.filter((v: string) => v !== optionValue);
-    }
-    
+    const newValues = checked
+      ? [...currentValues, optionValue]
+      : (currentValues as string[]).filter((v) => v !== optionValue);
     handleFieldChange(fieldName, newValues);
   };
 

@@ -1,7 +1,16 @@
 'use client';
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// Tipagem explícita para evitar uso de `any` em dados do formulário
+type UploadedFileMeta = {
+  name: string;
+  size: number;
+  type: string;
+  url?: string | null;
+  storagePath?: string | null;
+};
 
-import { useEffect, useState } from 'react';
+type FormValue = string | number | boolean | UploadedFileMeta;
+
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
@@ -26,14 +35,58 @@ export default function PublicFormBySlugPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, FormValue>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [tenants, setTenants] = useState<{ id: string; name: string; slug?: string }[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
 
-  useEffect(() => {
-    fetchForm();
+  // Carrega o formulário pelo slug. Mantemos como useCallback para estabilidade da referência.
+  const fetchForm = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/public/forms/by-slug/${formSlug}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setForm(data.form);
+        // Seleciona automaticamente o polo se o form estiver vinculado a um
+        if (data.form?.tenant_id) {
+          setSelectedTenant(data.form?.tenants?.id || data.form.tenant_id);
+        }
+        // Inicializa formData
+        const initialData: Record<string, FormValue> = {};
+        data.form.form_fields?.forEach((field: FormField) => {
+          // checkbox de múltipla seleção começa como array vazio;
+          // accept (checkbox único de aceite) começa como boolean false;
+          // demais tipos começam como string vazia.
+          if (field.type === 'checkbox') {
+            // Nota: o tipo FormValue não inclui array; tratamos checkbox à parte
+            // e coerção acontece no uso (includes, etc.).
+            // Se necessário no futuro, definir um tipo específico para arrays.
+            // @ts-expect-error checkbox usa array controlado localmente
+            initialData[field.name] = [];
+          } else if (field.type === 'accept') {
+            initialData[field.name] = false;
+          } else {
+            initialData[field.name] = '';
+          }
+        });
+        setFormData(initialData);
+      } else {
+        setError(data.error || 'Formulário não encontrado');
+      }
+    } catch (error) {
+      console.error('Error fetching form by slug:', error);
+      setError('Erro ao carregar formulário');
+    } finally {
+      setLoading(false);
+    }
   }, [formSlug]);
+
+  useEffect(() => {
+    // Evita ReferenceError: não acessar fetchForm antes de inicializar.
+    void fetchForm();
+  }, [fetchForm]);
 
   useEffect(() => {
     const fetchTenants = async () => {
@@ -53,43 +106,7 @@ export default function PublicFormBySlugPage() {
     fetchTenants();
   }, []);
 
-  const fetchForm = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/public/forms/by-slug/${formSlug}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setForm(data.form);
-        // Seleciona automaticamente o polo se o form estiver vinculado a um
-        if (data.form?.tenant_id) {
-          setSelectedTenant(data.form?.tenants?.id || data.form.tenant_id);
-        }
-        // Inicializa formData
-        const initialData: Record<string, any> = {};
-        data.form.form_fields?.forEach((field: FormField) => {
-          // checkbox de múltipla seleção começa como array vazio;
-          // accept (checkbox único de aceite) começa como boolean false;
-          // demais tipos começam como string vazia.
-          if (field.type === 'checkbox') {
-            initialData[field.name] = [];
-          } else if (field.type === 'accept') {
-            initialData[field.name] = false;
-          } else {
-            initialData[field.name] = '';
-          }
-        });
-        setFormData(initialData);
-      } else {
-        setError(data.error || 'Formulário não encontrado');
-      }
-    } catch (error) {
-      console.error('Error fetching form by slug:', error);
-      setError('Erro ao carregar formulário');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // fetchForm definido acima
 
   // Formatar valor em BRL
   const formatBRL = (value: number) => {
@@ -100,7 +117,7 @@ export default function PublicFormBySlugPage() {
     }
   };
 
-  const validateField = (field: FormField, value: any): string | null => {
+  const validateField = (field: FormField, value: FormValue): string | null => {
     // Regra específica para campo de aceite (checkbox único)
     if (field.type === 'accept') {
       if (field.required && value !== true) {
@@ -149,7 +166,7 @@ export default function PublicFormBySlugPage() {
     return null;
   };
 
-  const handleFieldChange = (fieldName: string, value: any) => {
+  const handleFieldChange = (fieldName: string, value: FormValue) => {
     setFormData({ ...formData, [fieldName]: value });
     if (validationErrors[fieldName]) {
       setValidationErrors({ ...validationErrors, [fieldName]: '' });
@@ -158,8 +175,9 @@ export default function PublicFormBySlugPage() {
 
   const handleCheckboxChange = (fieldName: string, optionValue: string, checked: boolean) => {
     const currentValues = formData[fieldName] || [];
-    let newValues;
-    newValues = checked ? [...currentValues, optionValue] : currentValues.filter((v: string) => v !== optionValue);
+    const newValues = checked
+      ? [...currentValues, optionValue]
+      : (currentValues as string[]).filter((v) => v !== optionValue);
     handleFieldChange(fieldName, newValues);
   };
 
@@ -274,7 +292,7 @@ export default function PublicFormBySlugPage() {
     // Remoção: ao clicar em remover no FileUpload, apagamos do storage (se houver) antes de limpar
     if (!file) {
       try {
-        const current = formData[fieldName] as any;
+        const current = formData[fieldName] as FormValue;
         const storagePath = current?.storagePath;
         if (storagePath) {
           const res = await fetch(`/api/public/upload/delete?path=${encodeURIComponent(storagePath)}`, { method: 'DELETE' });

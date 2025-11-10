@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('form-submissions')
       .upload(storagePath, buffer, {
         contentType: file.type,
@@ -89,14 +89,15 @@ export async function POST(request: NextRequest) {
         url: signedData?.signedUrl || null,
       },
     });
-  } catch (error) {
-    console.error('Upload error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('Upload error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // Deletar arquivo
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const storagePath = searchParams.get('path');
@@ -124,8 +125,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Delete error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('Delete error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

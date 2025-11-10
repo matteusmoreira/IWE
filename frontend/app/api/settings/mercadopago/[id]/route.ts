@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -13,9 +13,14 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
-  const body = await request.json();
-  const { access_token, public_key, webhook_secret, is_sandbox, is_production, is_active } = body;
+  const { id } = context.params;
+  const body = (await request.json()) as Record<string, unknown>;
+  const access_token = typeof body.access_token === 'string' ? body.access_token : undefined;
+  const public_key = typeof body.public_key === 'string' ? body.public_key : undefined;
+  const webhook_secret = typeof body.webhook_secret === 'string' ? body.webhook_secret : undefined;
+  const is_sandbox = typeof body.is_sandbox === 'boolean' ? body.is_sandbox : undefined;
+  const is_production = typeof body.is_production === 'boolean' ? body.is_production : undefined;
+  const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
 
   // Verificar se a config existe e se o admin tem permissão
   const { data: existingConfig, error: fetchError } = await supabase
@@ -44,10 +49,10 @@ export async function PATCH(
   }
 
   // Atualizar configuração
-  const updateData: any = {};
+  const updateData: Record<string, unknown> = {};
   if (access_token !== undefined) updateData.access_token = access_token;
-  if (public_key !== undefined) updateData.public_key = public_key || null;
-  if (webhook_secret !== undefined) updateData.webhook_secret = webhook_secret || null;
+  if (public_key !== undefined) updateData.public_key = public_key ?? null;
+  if (webhook_secret !== undefined) updateData.webhook_secret = webhook_secret ?? null;
   if (is_production !== undefined) {
     updateData.is_production = is_production;
   } else if (is_sandbox !== undefined) {
@@ -81,8 +86,8 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -92,7 +97,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const { id } = context.params;
 
   // Verificar se a config existe e se o admin tem permissão
   const { data: existingConfig, error: fetchError } = await supabase

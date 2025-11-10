@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -56,8 +56,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const { tenant_id, access_token, public_key, webhook_secret, is_sandbox, is_production, is_active } = body;
+  const body = (await request.json()) as Record<string, unknown>;
+  const tenant_id = typeof body.tenant_id === 'string' || typeof body.tenant_id === 'number' ? body.tenant_id : null;
+  const access_token = typeof body.access_token === 'string' ? body.access_token : null;
+  const public_key = typeof body.public_key === 'string' ? body.public_key : null;
+  const webhook_secret = typeof body.webhook_secret === 'string' ? body.webhook_secret : null;
+  const is_production = typeof body.is_production === 'boolean' ? body.is_production : undefined;
+  const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
 
   if (!tenant_id || !access_token) {
     return NextResponse.json({ error: 'tenant_id and access_token are required' }, { status: 400 });
@@ -84,8 +89,8 @@ export async function POST(request: NextRequest) {
     .insert({
       tenant_id,
       access_token,
-      public_key: public_key || null,
-      webhook_secret: webhook_secret || null,
+      public_key: public_key ?? null,
+      webhook_secret: webhook_secret ?? null,
       // Mapear corretamente para o schema (is_production). Padrão seguro: false.
       is_production: typeof is_production === 'boolean' ? is_production : false,
       is_active: is_active !== false,

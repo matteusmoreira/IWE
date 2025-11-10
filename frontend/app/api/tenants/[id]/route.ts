@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // GET /api/tenants/[id] - Buscar tenant por ID
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -26,15 +26,16 @@ export async function GET(
     }
 
     return NextResponse.json({ tenant });
-  } catch (error: any) {
-    console.error('Error fetching tenant:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error fetching tenant:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // PATCH /api/tenants/[id] - Atualizar tenant
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -99,15 +100,16 @@ export async function PATCH(
     });
 
     return NextResponse.json({ tenant });
-  } catch (error: any) {
-    console.error('Error updating tenant:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error updating tenant:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // DELETE /api/tenants/[id] - Deletar tenant
 export async function DELETE(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -157,8 +159,9 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Error deleting tenant:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error deleting tenant:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

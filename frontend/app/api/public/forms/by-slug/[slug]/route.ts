@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 // Preferimos Service Role para evitar bloqueios de RLS na leitura pública de formulários
@@ -6,7 +6,7 @@ const admin = createAdminClient();
 
 // GET /api/public/forms/by-slug/[slug] - Buscar formulário público por slug (sem autenticação)
 export async function GET(
-  request: NextRequest,
+  _request: Request,
   { params }: { params: { slug: string } }
 ) {
   try {
@@ -52,12 +52,13 @@ export async function GET(
 
     // Ordenar campos por order_index e filtrar ativos
     if (form.form_fields) {
-      form.form_fields.sort((a: any, b: any) => a.order_index - b.order_index);
-      form.form_fields = form.form_fields.filter((field: any) => field.is_active !== false);
+      const ff = form.form_fields as Array<Record<string, unknown>>;
+      ff.sort((a, b) => Number(a.order_index ?? 0) - Number(b.order_index ?? 0));
+      form.form_fields = ff.filter((field) => Boolean((field as Record<string, unknown>).is_active ?? true));
     }
 
     return NextResponse.json({ form });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching public form by slug:', error);
     return NextResponse.json({ error: 'Erro ao buscar formulário' }, { status: 500 });
   }

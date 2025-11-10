@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { parseTemplateVariables } from '@/lib/utils';
 
@@ -7,7 +7,7 @@ type SendWhatsAppBody = {
   to: string[] | string; // números no formato 11999999999 ou 5511999999999
   template_key?: string;
   message?: string; // conteúdo bruto se não usar template
-  variables?: Record<string, any>;
+  variables?: Record<string, unknown>;
   submission_id?: string; // opcional para log
 };
 
@@ -22,7 +22,7 @@ function normalizePhone(input: string): string {
   return number;
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const supabase = await createClient();
 
@@ -136,8 +136,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success, failures });
-  } catch (error: any) {
-    console.error('WhatsApp send error:', error);
-    return NextResponse.json({ error: 'Falha ao enviar WhatsApp' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Falha ao enviar WhatsApp';
+    console.error('WhatsApp send error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

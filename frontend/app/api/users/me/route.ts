@@ -43,7 +43,7 @@ export async function GET(req: Request) {
     const admin = createAdminClient()
 
     // 2) Tentar localizar por auth_user_id primeiro
-    let { data: userRow, error: readErr } = await admin
+    let { data: userRow } = await admin
       .from('users')
       .select('*')
       .eq('auth_user_id', user.id)
@@ -68,7 +68,8 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({ user: userRow })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'unexpected_error' }, { status: 500 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'unexpected_error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // Endpoint: POST /api/settings/whatsapp/qrcode
@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 // Estratégia: tentar /instance/qrcode/{instance}; se falhar, tentar /instance/connect/{instance}
 // Retorno: { success, message, state, qrcode_base64 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -102,15 +102,17 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ success: false, error: 'Não foi possível obter o QR Code. Verifique se a instância está aguardando pareamento (state=qrcode).' }, { status: 404 });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timeoutId);
-      if (err?.name === 'AbortError') {
+      if (err instanceof Error && err.name === 'AbortError') {
         return NextResponse.json({ success: false, error: 'Timeout ao obter QR Code.' }, { status: 408 });
       }
-      return NextResponse.json({ success: false, error: `Erro: ${err?.message || 'desconhecido'}` }, { status: 500 });
+      const message = err instanceof Error ? err.message : 'desconhecido';
+      return NextResponse.json({ success: false, error: `Erro: ${message}` }, { status: 500 });
     }
 
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: `Erro interno: ${error.message}` }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'desconhecido';
+    return NextResponse.json({ success: false, error: `Erro interno: ${message}` }, { status: 500 });
   }
 }

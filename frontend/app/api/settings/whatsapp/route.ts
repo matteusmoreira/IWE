@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -33,9 +33,10 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     // Tornar o erro mais explícito quando a tabela não existe (migração não aplicada)
-    const code = (error as any)?.code;
-    const message = (error as any)?.message;
-    const hint = (error as any)?.hint;
+    const er = error as unknown as { code?: string; message?: string; hint?: string } | null;
+    const code = er?.code;
+    const message = er?.message;
+    const hint = er?.hint;
     if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
       return NextResponse.json(
         {
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ config });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     instance_id: instance_id ?? instance_name,
     api_base_url: api_base_url ?? api_url,
     token: token ?? api_key,
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
     is_active: is_active !== false,
   };
 
-  let config: any = null;
+  let config: Record<string, unknown> | null = null;
   if (existing?.id) {
     const { data: updated, error } = await supabase
       .from('whatsapp_global_configs')
@@ -130,9 +131,10 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) {
       console.error('Error updating WhatsApp global config:', error);
-      const code = (error as any)?.code;
-      const message = (error as any)?.message;
-      const hint = (error as any)?.hint;
+      const er = error as unknown as { code?: string; message?: string; hint?: string } | null;
+      const code = er?.code;
+      const message = er?.message;
+      const hint = er?.hint;
       if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
         return NextResponse.json(
           {
@@ -145,7 +147,7 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
     }
-    config = updated;
+    config = updated as unknown as Record<string, unknown>;
   } else {
     const { data: created, error } = await supabase
       .from('whatsapp_global_configs')
@@ -154,9 +156,10 @@ export async function POST(request: NextRequest) {
       .single();
     if (error) {
       console.error('Error creating WhatsApp global config:', error);
-      const code = (error as any)?.code;
-      const message = (error as any)?.message;
-      const hint = (error as any)?.hint;
+      const er = error as unknown as { code?: string; message?: string; hint?: string } | null;
+      const code = er?.code;
+      const message = er?.message;
+      const hint = er?.hint;
       if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
         return NextResponse.json(
           {
@@ -169,7 +172,7 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({ error: 'Failed to create configuration' }, { status: 500 });
     }
-    config = created;
+    config = created as unknown as Record<string, unknown>;
   }
 
   // Audit log (sem tenant)
@@ -178,7 +181,7 @@ export async function POST(request: NextRequest) {
     tenant_id: null,
     action: 'CREATE',
     resource_type: 'whatsapp_global_config',
-    resource_id: config.id,
+    resource_id: (config as { id?: string } | null)?.id ?? null,
     changes: { created_by_auth_user_id: user.id },
   });
 

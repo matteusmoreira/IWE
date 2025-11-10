@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const { id } = context.params;
   const body = await request.json();
   // Aceitar aliases (name/title, message_template/content)
   const name = body.name ?? body.title;
@@ -52,7 +52,7 @@ export async function PATCH(
   }
 
   // Atualizar template (tabela message_templates)
-  const updateData: any = {};
+  const updateData: Record<string, unknown> = {};
   if (name !== undefined) updateData.title = name;
   if (message_template !== undefined) {
     updateData.content = message_template;
@@ -99,8 +99,8 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -110,7 +110,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const { id } = context.params;
 
   // Verificar se o template existe e se o admin tem permissão (tabela message_templates)
   const { data: existingTemplate, error: fetchError } = await supabase

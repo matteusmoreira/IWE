@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -13,9 +13,15 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
-  const body = await request.json();
-  const { webhook_url, auth_token, timeout_seconds, timeout_ms, max_retries, retries, is_active } = body;
+  const { id } = context.params;
+  const body = (await request.json()) as Record<string, unknown>;
+  const webhook_url = typeof body.webhook_url === 'string' ? body.webhook_url : undefined;
+  const auth_token = typeof body.auth_token === 'string' ? body.auth_token : undefined;
+  const timeout_seconds = typeof body.timeout_seconds === 'number' ? body.timeout_seconds : undefined;
+  const timeout_ms = typeof body.timeout_ms === 'number' ? body.timeout_ms : undefined;
+  const max_retries = typeof body.max_retries === 'number' ? body.max_retries : undefined;
+  const retries = typeof body.retries === 'number' ? body.retries : undefined;
+  const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
 
   // Verificar se a config GLOBAL existe
   const { data: existingConfig, error: fetchError } = await supabase
@@ -40,9 +46,9 @@ export async function PATCH(
   }
 
   // Atualizar configuração
-  const updateData: any = {};
+  const updateData: Record<string, unknown> = {};
   if (webhook_url !== undefined) updateData.enrollment_webhook_url = webhook_url;
-  if (auth_token !== undefined) updateData.enrollment_webhook_token = auth_token || null;
+  if (auth_token !== undefined) updateData.enrollment_webhook_token = auth_token ?? null;
   if (timeout_ms !== undefined) updateData.timeout_ms = timeout_ms;
   if (timeout_seconds !== undefined) updateData.timeout_ms = timeout_seconds * 1000;
   if (retries !== undefined) updateData.retries = retries;
@@ -75,8 +81,8 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -86,7 +92,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const { id } = context.params;
 
   // Verificar se a config GLOBAL existe
   const { data: existingConfig, error: fetchError } = await supabase

@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAppUrl, getPreferenceClientForTenant, getAccessTokenForTenant, getGlobalAccessToken, maskToken } from '@/lib/mercadopago';
 
 // GET /api/integration/mercadopago/status
 // Checa rapidamente se as variáveis de ambiente estão configuradas e
 // tenta criar uma preferência mínima para validar acesso ao Mercado Pago.
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -50,8 +50,8 @@ export async function GET(request: NextRequest) {
   let appUrlError: string | null = null;
   try {
     appUrl = getAppUrl();
-  } catch (e: any) {
-    appUrlError = String(e?.message || e);
+  } catch (e: unknown) {
+    appUrlError = e instanceof Error ? e.message : String(e);
   }
 
   const env = {
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
   };
 
   // Tentar criar uma preferência mínima para validar acesso ao MP
-  let testPreference: any = null;
+  let testPreference: Record<string, unknown> | null = null;
   try {
     const preference = await getPreferenceClientForTenant(tenantId);
     const back_urls = {
@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
       body: {
         items: [
           {
+            id: 'PING-IWE',
             title: 'Ping IWE',
             quantity: 1,
             unit_price: 1,
@@ -89,21 +90,31 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const rec = result as Record<string, unknown>;
+    const id = rec.id;
+    const initPoint = typeof rec.init_point === 'string'
+      ? rec.init_point
+      : (typeof rec.sandbox_init_point === 'string' ? rec.sandbox_init_point : undefined);
+
     testPreference = {
       success: true,
-      id: (result as any)?.id,
-      init_point: (result as any)?.init_point ?? (result as any)?.sandbox_init_point,
+      id,
+      init_point: initPoint,
     };
-  } catch (sdkError: any) {
+  } catch (sdkError: unknown) {
+    const detail = sdkError instanceof Error ? sdkError.message : String(sdkError);
+    const meta = typeof sdkError === 'object' && sdkError !== null
+      ? {
+          status: (sdkError as Record<string, unknown>).status,
+          code: (sdkError as Record<string, unknown>).code,
+          blocked_by: (sdkError as Record<string, unknown>).blocked_by,
+        }
+      : {};
     testPreference = {
       success: false,
       error: 'Erro ao criar preferência de teste',
-      detail: sdkError?.message || sdkError?.error || String(sdkError),
-      meta: {
-        status: sdkError?.status,
-        code: sdkError?.code,
-        blocked_by: sdkError?.blocked_by,
-      },
+      detail,
+      meta,
     };
   }
 

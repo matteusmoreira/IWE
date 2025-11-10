@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const { id } = context.params;
   const body = await request.json();
   const { instance_name, instance_id, api_url, api_base_url, api_key, token, default_sender, is_active } = body;
 
@@ -24,9 +24,10 @@ export async function PATCH(
     .eq('id', id)
     .single();
   if (fetchError || !existingConfig) {
-    const code = (fetchError as any)?.code;
-    const message = (fetchError as any)?.message;
-    const hint = (fetchError as any)?.hint;
+    const fe = fetchError as unknown as { code?: string; message?: string; hint?: string } | null;
+    const code = fe?.code;
+    const message = fe?.message;
+    const hint = fe?.hint;
     if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
       return NextResponse.json(
         {
@@ -52,7 +53,7 @@ export async function PATCH(
   }
 
   // Atualizar configuração
-  const updateData: any = {};
+  const updateData: Record<string, unknown> = {};
   if (instance_id !== undefined || instance_name !== undefined) updateData.instance_id = instance_id ?? instance_name;
   if (api_base_url !== undefined || api_url !== undefined) updateData.api_base_url = api_base_url ?? api_url;
   if (token !== undefined || api_key !== undefined) updateData.token = token ?? api_key;
@@ -67,9 +68,10 @@ export async function PATCH(
     .single();
   if (error) {
     console.error('Error updating WhatsApp global config:', error);
-    const code = (error as any)?.code;
-    const message = (error as any)?.message;
-    const hint = (error as any)?.hint;
+    const er = error as unknown as { code?: string; message?: string; hint?: string } | null;
+    const code = er?.code;
+    const message = er?.message;
+    const hint = er?.hint;
     if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
       return NextResponse.json(
         {
@@ -97,8 +99,8 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _request: Request,
+  context: { params: { id: string } }
 ) {
   const supabase = await createClient();
 
@@ -108,7 +110,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const { id } = context.params;
 
   // Verificar se a config GLOBAL existe e se tem permissão
   const { data: existingConfig, error: fetchError } = await supabase
@@ -117,9 +119,10 @@ export async function DELETE(
     .eq('id', id)
     .single();
   if (fetchError || !existingConfig) {
-    const code = (fetchError as any)?.code;
-    const message = (fetchError as any)?.message;
-    const hint = (fetchError as any)?.hint;
+    const fe = fetchError as unknown as { code?: string; message?: string; hint?: string } | null;
+    const code = fe?.code;
+    const message = fe?.message;
+    const hint = fe?.hint;
     if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
       return NextResponse.json(
         {
@@ -151,9 +154,10 @@ export async function DELETE(
     .eq('id', id);
   if (error) {
     console.error('Error deleting WhatsApp global config:', error);
-    const code = (error as any)?.code;
-    const message = (error as any)?.message;
-    const hint = (error as any)?.hint;
+    const er = error as unknown as { code?: string; message?: string; hint?: string } | null;
+    const code = er?.code;
+    const message = er?.message;
+    const hint = er?.hint;
     if (code === 'PGRST205' || /Could not find the table/i.test(String(message))) {
       return NextResponse.json(
         {

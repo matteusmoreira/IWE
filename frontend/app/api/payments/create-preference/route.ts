@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getAppUrl, getPreferenceClientForTenant } from '@/lib/mercadopago';
 
@@ -7,10 +7,12 @@ import { getAppUrl, getPreferenceClientForTenant } from '@/lib/mercadopago';
 const supabase = createAdminClient();
 
 // POST /api/payments/create-preference - Criar preferência de pagamento no Mercado Pago
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { submission_id } = body;
+    const body = (await request.json()) as Record<string, unknown>;
+    const submission_id = (typeof body.submission_id === 'string' || typeof body.submission_id === 'number')
+      ? body.submission_id
+      : null;
 
     if (!submission_id) {
       return NextResponse.json(
@@ -75,9 +77,10 @@ export async function POST(request: NextRequest) {
     let appUrl: string;
     try {
       appUrl = getAppUrl();
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const detail = e instanceof Error ? e.message : String(e);
       return NextResponse.json(
-        { error: 'APP_URL/NEXT_PUBLIC_APP_URL não configurado', reason: 'APP_URL_NOT_CONFIGURED', detail: String(e?.message || e) },
+        { error: 'APP_URL/NEXT_PUBLIC_APP_URL não configurado', reason: 'APP_URL_NOT_CONFIGURED', detail },
         { status: 500 }
       );
     }
@@ -115,19 +118,21 @@ export async function POST(request: NextRequest) {
     };
 
     // Usar SDK oficial com token do tenant quando disponível
-    const preferenceClient = await getPreferenceClientForTenant(submission.tenants?.id);
-    let mpData: any;
+    const preferenceClient = await getPreferenceClientForTenant((submission as Record<string, unknown>)?.tenants?.id);
+    let mpData: Record<string, unknown>;
     try {
-      const result = await preferenceClient.create({ body: preferencePayload as any });
-      mpData = result;
-    } catch (sdkError: any) {
+      const result = await preferenceClient.create({ body: preferencePayload as Record<string, unknown> });
+      mpData = result as Record<string, unknown>;
+    } catch (sdkError: unknown) {
       console.error('Mercado Pago error (SDK):', sdkError);
-      const detail = sdkError?.message || sdkError?.error || String(sdkError);
-      const meta = {
-        status: sdkError?.status,
-        code: sdkError?.code,
-        blocked_by: sdkError?.blocked_by,
-      };
+      const detail = sdkError instanceof Error ? sdkError.message : String(sdkError);
+      const meta = typeof sdkError === 'object' && sdkError !== null
+        ? {
+            status: (sdkError as Record<string, unknown>).status,
+            code: (sdkError as Record<string, unknown>).code,
+            blocked_by: (sdkError as Record<string, unknown>).blocked_by,
+          }
+        : {};
       return NextResponse.json(
         { error: 'Erro ao criar preferência de pagamento', reason: 'MP_PREFERENCE_ERROR', detail, meta },
         { status: 500 }
@@ -135,15 +140,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Atualizar submission com referência de pagamento
+    const mpId = (mpData.id as string | number | undefined) ?? null;
+    const initPoint = (mpData.init_point as string | undefined) ?? null;
+    const sandboxInitPoint = (mpData.sandbox_init_point as string | undefined) ?? null;
+
     await supabase
       .from('submissions')
       .update({
-        payment_reference: mpData.id,
-        payment_external_id: mpData.id,
+        payment_reference: mpId,
+        payment_external_id: mpId,
         metadata: {
           ...submission.metadata,
-          mp_preference_id: mpData.id,
-          mp_init_point: mpData.init_point,
+          mp_preference_id: mpId,
+          mp_init_point: initPoint,
         },
       })
       .eq('id', submission_id);
@@ -151,14 +160,14 @@ export async function POST(request: NextRequest) {
     // Retornar URL de checkout
     return NextResponse.json({
       success: true,
-      preference_id: mpData.id,
-      init_point: mpData.init_point, // URL para web
-      sandbox_init_point: mpData.sandbox_init_point, // URL para sandbox
+      preference_id: mpId,
+      init_point: initPoint, // URL para web
+      sandbox_init_point: sandboxInitPoint, // URL para sandbox
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating payment preference:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar pagamento', reason: 'UNEXPECTED_ERROR', detail: String(error?.message || error) },
+      { error: 'Erro ao processar pagamento', reason: 'UNEXPECTED_ERROR', detail: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

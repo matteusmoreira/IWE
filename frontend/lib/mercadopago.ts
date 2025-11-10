@@ -70,13 +70,13 @@ export async function getPreferenceClientForTenant(tenantId?: string): Promise<P
   let token: string | null = null;
   try {
     token = await getGlobalAccessToken();
-  } catch (e) {
+  } catch {
     console.warn('[MP] Falha ao obter token global, tentando tenant/env');
   }
   if (!token && tenantId) {
     try {
       token = await getAccessTokenForTenant(tenantId);
-    } catch (e) {
+    } catch {
       console.warn('[MP] Falha ao obter token do tenant, usando fallback de ambiente');
     }
   }

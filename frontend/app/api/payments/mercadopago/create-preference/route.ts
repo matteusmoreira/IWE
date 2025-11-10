@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getPreferenceClient, getAppUrl } from '@/lib/mercadopago';
 
 type CreatePreferenceBody = {
@@ -16,7 +16,7 @@ function badRequest(message: string) {
   });
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Partial<CreatePreferenceBody>;
     if (!body) return badRequest('Body inválido');
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       body: {
         items: [
           {
+            id: `ITEM-${Date.now()}`,
             title,
             quantity,
             unit_price,
@@ -67,24 +68,28 @@ export async function POST(req: NextRequest) {
     });
 
     // Resposta simplificada para o client redirecionar
-    return new Response(
-      JSON.stringify({ id: created.id, init_point: (created as any).init_point ?? (created as any).sandbox_init_point }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
+    const createdRec = created as Record<string, unknown>;
+    const initPoint = typeof createdRec.init_point === 'string'
+      ? createdRec.init_point
+      : (typeof createdRec.sandbox_init_point === 'string' ? createdRec.sandbox_init_point : undefined);
+
+    return NextResponse.json(
+      { id: createdRec.id, init_point: initPoint },
+      { status: 200 }
     );
-  } catch (err: any) {
-    console.error('[MP:create-preference] erro:', err?.message || err);
-    const detail = err?.message || err?.error || String(err);
-    const meta = {
-      status: err?.status,
-      code: err?.code,
-      blocked_by: err?.blocked_by,
-    };
-    return new Response(
-      JSON.stringify({ error: 'Falha ao criar preferência', detail, meta }),
-      {
-        status: 500,
-        headers: { 'content-type': 'application/json' },
-      }
+  } catch (err: unknown) {
+    console.error('[MP:create-preference] erro:', err);
+    const detail = err instanceof Error ? err.message : String(err);
+    const meta = typeof err === 'object' && err !== null
+      ? {
+          status: (err as Record<string, unknown>).status,
+          code: (err as Record<string, unknown>).code,
+          blocked_by: (err as Record<string, unknown>).blocked_by,
+        }
+      : {};
+    return NextResponse.json(
+      { error: 'Falha ao criar preferência', detail, meta },
+      { status: 500 }
     );
   }
 }

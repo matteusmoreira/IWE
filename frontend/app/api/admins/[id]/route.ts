@@ -4,14 +4,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 // GET /api/admins/[id] - Buscar admin por ID
 export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _req: NextRequest,
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = await createClient();
-    const adminClient = createAdminClient();
-
-    const { id } = await context.params;
+    const { id } = params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -40,22 +38,22 @@ export async function GET(
     }
 
     return NextResponse.json({ admin });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error fetching admin:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // PATCH /api/admins/[id] - Atualizar admin
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
-
-    const { id } = await context.params;
+    const { id } = params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -98,7 +96,7 @@ export async function PATCH(
       .eq('id', id)
       .select();
 
-    const admin = Array.isArray(adminRows) ? adminRows[0] : adminRows as any;
+    const admin = Array.isArray(adminRows) ? adminRows[0] : adminRows;
 
     if (updateError) {
       console.error('Error updating users row:', updateError);
@@ -147,22 +145,22 @@ export async function PATCH(
     });
 
     return NextResponse.json({ admin });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error updating admin:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 // DELETE /api/admins/[id] - Deletar admin
 export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  _req: NextRequest,
+  { params }: { params: { id: string } }
 ) {
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
-
-    const { id } = await context.params;
+    const { id } = params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -227,8 +225,9 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error deleting admin:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

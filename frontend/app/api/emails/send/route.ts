@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { resend, sendEmail } from '@/lib/resend';
+import { sendEmail } from '@/lib/resend';
 import { parseTemplateVariables } from '@/lib/utils';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   let usedTemplateId: string | null = null;
 
   // Se tiver submission_id, buscar para enriquecer variáveis
-  let submission: any = null;
+  let submission: Record<string, unknown> | null = null;
   if (submission_id) {
     const { data: sub } = await supabase
       .from('submissions')
@@ -75,14 +75,14 @@ export async function POST(request: NextRequest) {
     }
     usedTemplateId = template.id;
     // Preparar variáveis: combinar corpo + submissão
-    const v = {
+    const v: Record<string, unknown> = {
       nome_completo: submission?.data?.nome_completo || submission?.data?.nome || submission?.data?.name,
       curso: submission?.data?.curso || submission?.data?.course,
       polo: submission?.tenant_name || '',
       valor: submission?.payment_amount != null ? String(submission.payment_amount) : undefined,
       ...submission?.data,
       ...variables,
-    } as Record<string, any>;
+    };
     finalHtml = parseTemplateVariables(template.content, v);
     finalSubject = finalSubject || template.title;
   }
@@ -102,9 +102,11 @@ export async function POST(request: NextRequest) {
       resource_id: usedTemplateId, // pode ser null quando html custom
       details: { message: 'Email enviado via Resend', to_count: Array.isArray(to) ? to.length : 1 },
     });
-    return NextResponse.json({ id: (result as any)?.data?.id || null, success: true });
-  } catch (err: any) {
-    console.error('Erro ao enviar e-mail:', String(err).slice(0, 300));
+    const emailId = (result as { data?: { id?: string } }).data?.id ?? null;
+    return NextResponse.json({ id: emailId, success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Erro desconhecido';
+    console.error('Erro ao enviar e-mail:', message.slice(0, 300));
     return NextResponse.json({ error: 'Falha ao enviar e-mail' }, { status: 500 });
   }
 }

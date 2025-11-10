@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { parseTemplateVariables } from '@/lib/utils';
 import { sendEmail } from '@/lib/resend';
@@ -14,7 +14,7 @@ function normalizePhone(input: string): string {
   return number;
 }
 
-export async function POST(_req: NextRequest) {
+export async function POST() {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -154,7 +154,7 @@ export async function POST(_req: NextRequest) {
     }
 
     return NextResponse.json({ processed });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Process scheduled error:', error);
     return NextResponse.json({ error: 'Falha ao processar agendamentos' }, { status: 500 });
   }

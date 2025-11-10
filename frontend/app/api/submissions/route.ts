@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // Garantir que a rota seja sempre dinâmica (sem cache)
 export const dynamic = 'force-dynamic';
 
 // GET /api/submissions - Listar submissões com filtros
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
 
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     // Filtrar por tenants se não for superadmin
     if (userData.role !== 'superadmin') {
-      const tenantIds = userData.admin_tenants?.map((at: any) => at.tenant_id) || [];
+      const tenantIds = (userData.admin_tenants ?? []).map((at) => (at as { tenant_id: string }).tenant_id);
       if (tenantIds.length === 0) {
         return NextResponse.json({ submissions: [], total: 0 });
       }
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
           .select('name')
           .or(patterns.map(p => `name.ilike.${p}`).join(','))
           .limit(500);
-        const dynamicNames = Array.from(new Set((ff || []).map((r: any) => String(r.name))));
+        const dynamicNames = Array.from(new Set((ff || []).map((r) => String((r as { name: unknown }).name))));
         const idFieldNames = Array.from(new Set([...idCandidatesDefault, ...dynamicNames]));
         for (const fieldName of idFieldNames) {
           // Busca parcial por ID do aluno no JSON
@@ -131,11 +131,11 @@ export async function GET(request: NextRequest) {
           .select('name')
           .or(namePhonePatterns.map(p => `name.ilike.${p}`).join(','))
           .limit(500);
-        const namePhoneNames = Array.from(new Set((ff2 || []).map((r: any) => String(r.name))));
+        const namePhoneNames = Array.from(new Set((ff2 || []).map((r) => String((r as { name: unknown }).name))));
         for (const fieldName of namePhoneNames) {
           orClauses.push(`data->>'${fieldName}'.ilike.*${s}*`);
         }
-      } catch (e) {
+      } catch {
         // Se não conseguir ler form_fields (RLS), usa somente candidatos padrão
         for (const fieldName of idCandidatesDefault) {
           orClauses.push(`data->>'${fieldName}'.ilike.*${s}*`);
@@ -162,8 +162,9 @@ export async function GET(request: NextRequest) {
       limit,
       offset,
     });
-  } catch (error: any) {
-    console.error('Error in submissions GET:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    console.error('Error in submissions GET:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

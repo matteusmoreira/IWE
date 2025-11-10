@@ -24,7 +24,9 @@ export async function POST(req: Request) {
       data: { user: cookieUser },
     } = await supabase.auth.getUser()
 
-    let user = cookieUser
+    // Normaliza usuário para evitar 'any' no acesso aos campos
+    let user: { id: string; email: string | null; user_metadata?: Record<string, unknown> } | null =
+      cookieUser ? { id: cookieUser.id, email: cookieUser.email, user_metadata: (cookieUser as unknown as { user_metadata?: Record<string, unknown> }).user_metadata } : null
     if (!user) {
       const authHeader = req.headers.get('authorization') || req.headers.get('Authorization')
       const bearer = authHeader?.startsWith('Bearer ')
@@ -32,7 +34,7 @@ export async function POST(req: Request) {
         : undefined
       const claims = decodeJwt(bearer)
       if (claims?.sub) {
-        user = { id: claims.sub, email: claims.email ?? null } as any
+        user = { id: claims.sub, email: claims.email ?? null }
       }
     }
 
@@ -48,7 +50,11 @@ export async function POST(req: Request) {
       .upsert({
         auth_user_id: user.id,
         email: user.email!,
-        name: (user as any)?.user_metadata?.name ?? (user.email?.split('@')[0] ?? 'Usuário'),
+        // Extrai nome de forma segura a partir de metadados
+        name:
+          (typeof user.user_metadata?.name === 'string'
+            ? (user.user_metadata?.name as string)
+            : (user.email?.split('@')[0] ?? 'Usuário')),
         is_active: true,
       }, { onConflict: 'email' })
       .select()
@@ -59,7 +65,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, id: ensured.id })
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'unexpected_error' }, { status: 500 })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'unexpected_error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

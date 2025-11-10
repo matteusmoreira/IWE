@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ config });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const supabase = await createClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -46,16 +46,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const {
-    webhook_url,
-    auth_token,
-    timeout_seconds,
-    timeout_ms,
-    max_retries,
-    retries,
-    is_active,
-  } = body;
+  const body = (await request.json()) as Record<string, unknown>;
+  const webhook_url = typeof body.webhook_url === 'string' ? body.webhook_url : '';
+  const auth_token = typeof body.auth_token === 'string' ? body.auth_token : null;
+  const timeout_seconds = typeof body.timeout_seconds === 'number' ? body.timeout_seconds : undefined;
+  const timeout_ms = typeof body.timeout_ms === 'number' ? body.timeout_ms : undefined;
+  const max_retries = typeof body.max_retries === 'number' ? body.max_retries : undefined;
+  const retries = typeof body.retries === 'number' ? body.retries : undefined;
+  const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
 
   if (!webhook_url) {
     return NextResponse.json({ error: 'webhook_url is required' }, { status: 400 });
@@ -87,15 +85,15 @@ export async function POST(request: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     enrollment_webhook_url: webhook_url,
-    enrollment_webhook_token: auth_token || null,
+    enrollment_webhook_token: auth_token ?? null,
     timeout_ms: timeoutCalculated,
     retries: typeof retries === 'number' ? retries : (typeof max_retries === 'number' ? max_retries : 3),
     is_active: is_active !== false,
   };
 
-  let config: any = null;
+  let finalConfig: Record<string, unknown> | null = null;
   if (existing?.id) {
     const { data: updated, error } = await supabase
       .from('outbound_webhook_global_configs')
@@ -107,7 +105,7 @@ export async function POST(request: NextRequest) {
       console.error('Error updating n8n global config:', error);
       return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 });
     }
-    config = updated;
+    finalConfig = updated as Record<string, unknown>;
   } else {
     const { data: created, error } = await supabase
       .from('outbound_webhook_global_configs')
@@ -118,7 +116,7 @@ export async function POST(request: NextRequest) {
       console.error('Error creating n8n global config:', error);
       return NextResponse.json({ error: 'Failed to create configuration' }, { status: 500 });
     }
-    config = created;
+    finalConfig = created as Record<string, unknown>;
   }
 
   // sucesso
@@ -129,9 +127,9 @@ export async function POST(request: NextRequest) {
     tenant_id: null,
     action: 'CREATE',
     resource_type: 'outbound_webhook_global_config',
-    resource_id: config.id,
+    resource_id: (finalConfig as { id?: unknown })?.id ?? null,
     changes: { created_by_auth_user_id: user.id },
   });
 
-  return NextResponse.json({ config });
+  return NextResponse.json({ config: finalConfig });
 }
