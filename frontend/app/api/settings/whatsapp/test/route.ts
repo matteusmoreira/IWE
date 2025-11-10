@@ -153,10 +153,11 @@ export async function POST(request: Request) {
       });
 
       // Registrar auditoria do último estado (sem segredos)
+      let connection_state: string | null = null;
       try {
         const connStateObj = asRecord(connectionState);
         const connStateInstance = asRecord(connStateObj.instance);
-        const connection_state = getString(connStateInstance.state) ?? getString(connStateObj.state) ?? null;
+        connection_state = getString(connStateInstance.state) ?? getString(connStateObj.state) ?? null;
 
         await supabase.from('audit_logs').insert({
           user_id: roleRow?.id ?? null,

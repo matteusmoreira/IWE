@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
   request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
   const body = (await request.json()) as Record<string, unknown>;
   const access_token = typeof body.access_token === 'string' ? body.access_token : undefined;
   const public_key = typeof body.public_key === 'string' ? body.public_key : undefined;
@@ -87,7 +87,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -97,7 +97,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
 
   // Verificar se a config existe e se o admin tem permissão
   const { data: existingConfig, error: fetchError } = await supabase

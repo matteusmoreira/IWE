@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { 
   FIELD_TYPES, 
   FormField, 
+  FieldType,
   generateFieldName, 
   fieldRequiresOptions,
   getDefaultPlaceholder 
@@ -122,7 +123,7 @@ export default function EditFormPage() {
     }
   };
 
-  const addField = (type: string) => {
+  const addField = (type: FieldType) => {
     const newField: FormField = {
       id: `field_${Date.now()}`,
       type,

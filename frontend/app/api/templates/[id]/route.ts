@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
   request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
   const body = await request.json();
   // Aceitar aliases (name/title, message_template/content)
   const name = body.name ?? body.title;
@@ -100,7 +100,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -110,7 +110,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
 
   // Verificar se o template existe e se o admin tem permissão (tabela message_templates)
   const { data: existingTemplate, error: fetchError } = await supabase

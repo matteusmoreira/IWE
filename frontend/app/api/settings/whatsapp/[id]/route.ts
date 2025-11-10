@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
   request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
   const body = await request.json();
   const { instance_name, instance_id, api_url, api_base_url, api_key, token, default_sender, is_active } = body;
 
@@ -100,7 +100,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -110,7 +110,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
 
   // Verificar se a config GLOBAL existe e se tem permissão
   const { data: existingConfig, error: fetchError } = await supabase

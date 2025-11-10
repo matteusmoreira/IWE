@@ -7,9 +7,10 @@ const admin = createAdminClient();
 // GET /api/public/forms/[id] - Buscar formulário público (sem autenticação)
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     // Buscar formulário
     const { data: form, error } = await admin
       .from('form_definitions')
@@ -38,7 +39,7 @@ export async function GET(
           is_active
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('is_active', true) // Apenas formulários ativos
       .single();
 
@@ -54,7 +55,7 @@ export async function GET(
       const ff = form.form_fields as Array<Record<string, unknown>>;
       ff.sort((a, b) => Number(a.order_index ?? 0) - Number(b.order_index ?? 0));
       // Filtrar apenas campos ativos
-      form.form_fields = ff.filter((field) => Boolean((field as Record<string, unknown>).is_active ?? true));
+      form.form_fields = ff.filter((field) => Boolean((field as Record<string, unknown>).is_active ?? true)) as typeof form.form_fields;
     }
 
     return NextResponse.json({ form });

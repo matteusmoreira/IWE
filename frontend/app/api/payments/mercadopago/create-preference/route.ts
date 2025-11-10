@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     });
 
     // Resposta simplificada para o client redirecionar
-    const createdRec = created as Record<string, unknown>;
+    const createdRec = created as unknown as Record<string, unknown>;
     const initPoint = typeof createdRec.init_point === 'string'
       ? createdRec.init_point
       : (typeof createdRec.sandbox_init_point === 'string' ? createdRec.sandbox_init_point : undefined);

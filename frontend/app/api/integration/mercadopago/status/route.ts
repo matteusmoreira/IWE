@@ -90,7 +90,8 @@ export async function GET(request: Request) {
       },
     });
 
-    const rec = result as Record<string, unknown>;
+    // O SDK tipa o retorno como PreferenceResponse; convertendo via unknown primeiro para acessar chaves dinamicamente
+    const rec = result as unknown as Record<string, unknown>;
     const id = rec.id;
     const initPoint = typeof rec.init_point === 'string'
       ? rec.init_point

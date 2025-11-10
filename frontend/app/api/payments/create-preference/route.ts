@@ -118,11 +118,12 @@ export async function POST(request: Request) {
     };
 
     // Usar SDK oficial com token do tenant quando disponível
-    const preferenceClient = await getPreferenceClientForTenant((submission as Record<string, unknown>)?.tenants?.id);
+    const tenantId = (submission as unknown as { tenants?: { id?: string } })?.tenants?.id;
+    const preferenceClient = await getPreferenceClientForTenant(tenantId);
     let mpData: Record<string, unknown>;
     try {
-      const result = await preferenceClient.create({ body: preferencePayload as Record<string, unknown> });
-      mpData = result as Record<string, unknown>;
+      const result = await preferenceClient.create({ body: preferencePayload as any });
+      mpData = result as unknown as Record<string, unknown>;
     } catch (sdkError: unknown) {
       console.error('Mercado Pago error (SDK):', sdkError);
       const detail = sdkError instanceof Error ? sdkError.message : String(sdkError);

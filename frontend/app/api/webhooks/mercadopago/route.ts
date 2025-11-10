@@ -259,7 +259,7 @@ async function sendWhatsAppNotification(submission: SubmissionRow) {
     // Substituir variáveis no template usando util
     // Evita substituições quebradas e mantém placeholders não encontrados
     // import implícito: util fica no lado do cliente; replicamos logicamente aqui
-    const message = template.content.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    const message = template.content.replace(/\{\{(\w+)\}\}/g, (match: string, key: string) => {
       const v = variables as Record<string, unknown>;
       return v[key] !== undefined ? String(v[key]) : match;
     });
@@ -370,7 +370,7 @@ async function sendEmailNotification(submission: SubmissionRow) {
       <p>Olá, {{nome_completo}}!</p>
       <p>Seu pagamento de {{valor}} para o curso {{curso}} no polo {{polo}} foi aprovado.</p>
       <p>Em breve você receberá orientações de acesso.</p>
-    `).replace(/\{\{(\w+)\}\}/g, (m, key) => variables[key] !== undefined ? String(variables[key]) : m);
+    `).replace(/\{\{(\w+)\}\}/g, (m: string, key: string) => variables[key] !== undefined ? String(variables[key]) : m);
 
     const replyTo = process.env.RESEND_REPLY_TO;
     await sendEmail({ to: email, subject, html, replyTo });

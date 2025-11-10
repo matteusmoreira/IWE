@@ -32,9 +32,7 @@ export default function PublicFormPage() {
   const [tenants, setTenants] = useState<{ id: string; name: string; slug?: string }[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
 
-  useEffect(() => {
-    fetchForm();
-  }, [fetchForm]);
+  // Efeito de carregamento do formulário é definido após a função fetchForm
 
   useEffect(() => {
     const fetchTenants = async () => {
@@ -93,6 +91,10 @@ export default function PublicFormPage() {
       setLoading(false);
     }
   }, [formId, router]);
+
+  useEffect(() => {
+    fetchForm();
+  }, [fetchForm]);
 
   const validateField = (field: FormField, value: any): string | null => {
     // Regras específicas para campo de aceite (checkbox único)

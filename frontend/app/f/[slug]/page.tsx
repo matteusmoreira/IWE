@@ -8,7 +8,8 @@ type UploadedFileMeta = {
   storagePath?: string | null;
 };
 
-type FormValue = string | number | boolean | UploadedFileMeta;
+// Inclui arrays de string para campos do tipo checkbox (múltipla seleção)
+type FormValue = string | number | boolean | UploadedFileMeta | string[];
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
@@ -60,10 +61,6 @@ export default function PublicFormBySlugPage() {
           // accept (checkbox único de aceite) começa como boolean false;
           // demais tipos começam como string vazia.
           if (field.type === 'checkbox') {
-            // Nota: o tipo FormValue não inclui array; tratamos checkbox à parte
-            // e coerção acontece no uso (includes, etc.).
-            // Se necessário no futuro, definir um tipo específico para arrays.
-            // @ts-expect-error checkbox usa array controlado localmente
             initialData[field.name] = [];
           } else if (field.type === 'accept') {
             initialData[field.name] = false;
@@ -131,18 +128,22 @@ export default function PublicFormBySlugPage() {
     }
     if (!value) return null;
     if (field.type === 'email') {
+      if (typeof value !== 'string') return 'Email inválido';
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(value)) return 'Email inválido';
     }
     if (field.type === 'cpf') {
+      if (typeof value !== 'string') return 'CPF inválido (use o formato 000.000.000-00)';
       const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
       if (!cpfRegex.test(value)) return 'CPF inválido (use o formato 000.000.000-00)';
     }
     if (field.type === 'cep') {
+      if (typeof value !== 'string') return 'CEP inválido (use o formato 00000-000)';
       const cepRegex = /^\d{5}-\d{3}$/;
       if (!cepRegex.test(value)) return 'CEP inválido (use o formato 00000-000)';
     }
     if (field.type === 'phone') {
+      if (typeof value !== 'string') return 'Telefone inválido (use o formato (00) 00000-0000)';
       const phoneRegex = /^\(\d{2}\)\s?\d{4,5}-?\d{4}$/;
       if (!phoneRegex.test(value)) return 'Telefone inválido (use o formato (00) 00000-0000)';
     }
@@ -156,10 +157,11 @@ export default function PublicFormBySlugPage() {
       }
     }
     if (field.type === 'text' || field.type === 'textarea') {
-      if (field.validation_rules?.minLength && value.length < field.validation_rules.minLength) {
+      const str = typeof value === 'string' ? value : String(value ?? '');
+      if (field.validation_rules?.minLength && str.length < field.validation_rules.minLength) {
         return `Deve ter no mínimo ${field.validation_rules.minLength} caracteres`;
       }
-      if (field.validation_rules?.maxLength && value.length > field.validation_rules.maxLength) {
+      if (field.validation_rules?.maxLength && str.length > field.validation_rules.maxLength) {
         return `Deve ter no máximo ${field.validation_rules.maxLength} caracteres`;
       }
     }
@@ -174,10 +176,11 @@ export default function PublicFormBySlugPage() {
   };
 
   const handleCheckboxChange = (fieldName: string, optionValue: string, checked: boolean) => {
-    const currentValues = formData[fieldName] || [];
-    const newValues = checked
-      ? [...currentValues, optionValue]
-      : (currentValues as string[]).filter((v) => v !== optionValue);
+    const current = formData[fieldName];
+    const list = Array.isArray(current) ? (current as string[]) : [];
+    const newValues: string[] = checked
+      ? [...list, optionValue]
+      : list.filter((v) => v !== optionValue);
     handleFieldChange(fieldName, newValues);
   };
 
@@ -293,7 +296,9 @@ export default function PublicFormBySlugPage() {
     if (!file) {
       try {
         const current = formData[fieldName] as FormValue;
-        const storagePath = current?.storagePath;
+        const storagePath = (typeof current === 'object' && !Array.isArray(current) && current && 'storagePath' in current
+          ? (current as UploadedFileMeta).storagePath
+          : null);
         if (storagePath) {
           const res = await fetch(`/api/public/upload/delete?path=${encodeURIComponent(storagePath)}`, { method: 'DELETE' });
           if (!res.ok) {
@@ -405,7 +410,10 @@ export default function PublicFormBySlugPage() {
               id={field.name}
               type={field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : 'text'}
               placeholder={field.placeholder || ''}
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
+              })()}
               onChange={(e) => handleFieldChange(field.name, e.target.value)}
               className={fieldError ? 'border-red-500' : ''}
               required={field.required}
@@ -425,7 +433,10 @@ export default function PublicFormBySlugPage() {
               id={field.name}
               type="text"
               placeholder={field.placeholder || '(00) 00000-0000'}
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' ? v : '';
+              })()}
               onChange={(e) => {
                 const formatted = formatPhone(e.target.value);
                 handleFieldChange(field.name, formatted);
@@ -449,7 +460,10 @@ export default function PublicFormBySlugPage() {
               id={field.name}
               type="text"
               placeholder={field.placeholder || '00000-000'}
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' ? v : '';
+              })()}
               onChange={(e) => {
                 const formatted = formatCEP(e.target.value);
                 handleFieldChange(field.name, formatted);
@@ -472,7 +486,10 @@ export default function PublicFormBySlugPage() {
               id={field.name}
               type="text"
               placeholder={field.placeholder || '000.000.000-00'}
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' ? v : '';
+              })()}
               onChange={(e) => {
                 const formatted = formatCPF(e.target.value);
                 handleFieldChange(field.name, formatted);
@@ -494,7 +511,10 @@ export default function PublicFormBySlugPage() {
             <textarea
               id={field.name}
               placeholder={field.placeholder || ''}
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' ? v : '';
+              })()}
               onChange={(e) => handleFieldChange(field.name, e.target.value)}
               className={`${baseInputClass} min-h-[100px]`}
               required={field.required}
@@ -512,7 +532,10 @@ export default function PublicFormBySlugPage() {
             <Input
               id={field.name}
               type="date"
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' ? v : '';
+              })()}
               onChange={(e) => handleFieldChange(field.name, e.target.value)}
               className={fieldError ? 'border-red-500' : ''}
               required={field.required}
@@ -529,7 +552,10 @@ export default function PublicFormBySlugPage() {
             </Label>
             <select
               id={field.name}
-              value={formData[field.name] || ''}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'string' ? v : '';
+              })()}
               onChange={(e) => handleFieldChange(field.name, e.target.value)}
               className={baseInputClass}
               required={field.required}
@@ -591,7 +617,7 @@ export default function PublicFormBySlugPage() {
                     <input
                       type="checkbox"
                       value={optValue}
-                      checked={(formData[field.name] || []).includes(optValue)}
+                      checked={(Array.isArray(formData[field.name]) ? (formData[field.name] as string[]) : []).includes(optValue)}
                       onChange={(e) => handleCheckboxChange(field.name, optValue, e.target.checked)}
                     />
                     <span>{optLabel}</span>
@@ -633,7 +659,10 @@ export default function PublicFormBySlugPage() {
             <FileUpload
               accept={computeAccept(field.validation_rules?.fileTypes)}
               maxSize={field.validation_rules?.maxFileSize ?? 10 * 1024 * 1024}
-              value={formData[field.name]?.url}
+              value={(() => {
+                const v = formData[field.name];
+                return typeof v === 'object' && v && !Array.isArray(v) ? (v as UploadedFileMeta).url ?? undefined : undefined;
+              })()}
               disabled={submitting}
               showPreview={false}
               onFileSelect={(file) => uploadFile(field.name, file)}

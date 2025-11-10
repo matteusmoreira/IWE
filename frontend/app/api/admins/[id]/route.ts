@@ -5,11 +5,11 @@ import { createAdminClient } from '@/lib/supabase/admin';
 // GET /api/admins/[id] - Buscar admin por ID
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const { id } = params;
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -48,12 +48,12 @@ export async function GET(
 // PATCH /api/admins/[id] - Atualizar admin
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
-    const { id } = params;
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -155,12 +155,12 @@ export async function PATCH(
 // DELETE /api/admins/[id] - Deletar admin
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
-    const { id } = params;
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();

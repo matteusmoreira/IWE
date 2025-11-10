@@ -9,7 +9,18 @@ if (!apiKey) {
   console.warn('[Resend] RESEND_API_KEY não configurada. Envio de e-mails ficará indisponível.');
 }
 
-export const resend = new Resend(apiKey ?? '');
+// Evitar instanciar cliente com chave vazia em tempo de build.
+// Instanciaremos sob demanda em runtime.
+let resendClient: Resend | null = null;
+
+export function getResend(): Resend {
+  if (resendClient) return resendClient;
+  if (!apiKey) {
+    throw new Error('Resend não configurado (RESEND_API_KEY ausente)');
+  }
+  resendClient = new Resend(apiKey);
+  return resendClient;
+}
 
 export type SendEmailInput = {
   to: string | string[];
@@ -24,12 +35,14 @@ export async function sendEmail(input: SendEmailInput) {
   if (!from) {
     throw new Error('RESEND_FROM não configurado');
   }
+  const resend = getResend();
   return resend.emails.send({
     from,
     to: input.to,
     subject: input.subject,
     html: input.html,
-    reply_to: input.replyTo,
+    // Resend SDK usa camelCase 'replyTo'.
+    replyTo: input.replyTo,
     bcc: input.bcc,
   });
 }

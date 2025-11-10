@@ -70,3 +70,37 @@ WhatsApp — Teste de Conexão (Evolution API)
 Importante
 - Erros comuns: 404 ao usar baseUrl com barra final + path com barra inicial (//), 401 quando o header apikey não é enviado.
  - Endpoints usados: GET /instance/fetchInstances, GET /instance/connectionState/{instance}, GET /instance/qrcode/{instance} (fallback GET /instance/connect/{instance}).
+
+Deploy na Vercel (CLI)
+- Pré-requisitos: conta Vercel e autenticação via CLI (interativo com `vercel login` ou variável de ambiente `VERCEL_TOKEN` para uso não-interativo). Nunca exponha tokens em logs/commits.
+- Em ambientes Windows com política de execução restrita, use o binário do Next e Vercel via Node diretamente:
+  - Link do projeto (cwd: `frontend/`):
+    - `node ../node_modules/vercel/dist/index.js link --scope <org> --confirm`
+    - Cria `.vercel/project.json` com o ID do projeto e organização.
+  - Deploy de Preview (cwd: `frontend/`):
+    - `node ../node_modules/vercel/dist/index.js deploy --confirm`
+  - Deploy de Produção (cwd: `frontend/`):
+    - `node ../node_modules/vercel/dist/index.js deploy --prod --confirm`
+
+Variáveis de ambiente na Vercel
+- Defina para Production e Preview (no dashboard ou via CLI):
+  - `APP_URL`: URL base do backend/servidor para compor back_urls e notification_url. Ex.: `https://seu-domínio.com`.
+  - `NEXT_PUBLIC_APP_URL`: URL pública da aplicação (usada no cliente). Ex.: `https://seu-domínio.com`.
+  - `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (cliente)
+  - `SUPABASE_SERVICE_ROLE_KEY` (servidor)
+  - `MP_ACCESS_TOKEN` (servidor) e `MP_PUBLIC_KEY` (opcional)
+  - `MP_STATEMENT_DESCRIPTOR` (opcional)
+  - `RESEND_API_KEY`, `RESEND_FROM`, `RESEND_REPLY_TO` (e-mail)
+  - `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_NAME` (WhatsApp)
+
+Notas de roteamento/compatibilidade (Next 15)
+- Handlers em `app/api/**/[...]/route.ts` usam `context: { params: Promise<{...}> }` e extraem com `const { id } = await context.params;`, compatível com a tipagem do Next 15.
+- Páginas de formulário público (`/f/[slug]`) retornam 404 quando o formulário está inativo ou não existe.
+
+Checklist de Deploy
+- [ ] Projeto linkado (`.vercel/` presente no diretório `frontend/`).
+- [ ] Variáveis de ambiente configuradas em Production e Preview (sem expor segredos).
+- [ ] Deploy de Preview criado e validado (URL abre sem erro 500).
+- [ ] Deploy de Produção criado.
+- [ ] `NEXT_PUBLIC_APP_URL` aponta para o domínio final.
+- [ ] Smoke test executado nas rotas principais.

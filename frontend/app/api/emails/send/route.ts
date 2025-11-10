@@ -75,12 +75,14 @@ export async function POST(request: Request) {
     }
     usedTemplateId = template.id;
     // Preparar variáveis: combinar corpo + submissão
+    const sd = (submission?.data ?? {}) as Record<string, unknown>;
+    const asStr = (val: unknown) => (typeof val === 'string' ? val : undefined);
     const v: Record<string, unknown> = {
-      nome_completo: submission?.data?.nome_completo || submission?.data?.nome || submission?.data?.name,
-      curso: submission?.data?.curso || submission?.data?.course,
-      polo: submission?.tenant_name || '',
-      valor: submission?.payment_amount != null ? String(submission.payment_amount) : undefined,
-      ...submission?.data,
+      nome_completo: asStr(sd['nome_completo']) ?? asStr(sd['nome']) ?? asStr(sd['name']),
+      curso: asStr(sd['curso']) ?? asStr(sd['course']),
+      polo: typeof (submission as Record<string, unknown> | null)?.tenant_name === 'string' ? (submission as Record<string, unknown>)!.tenant_name : '',
+      valor: (submission as Record<string, unknown> | null)?.payment_amount != null ? String((submission as Record<string, unknown>)!.payment_amount as unknown as string) : undefined,
+      ...sd,
       ...variables,
     };
     finalHtml = parseTemplateVariables(template.content, v);

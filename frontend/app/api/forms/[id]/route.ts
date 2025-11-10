@@ -4,10 +4,11 @@ import { createClient } from '@/lib/supabase/server';
 // GET /api/forms/[id] - Buscar formulário por ID
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -37,7 +38,7 @@ export async function GET(
           is_active
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) {
@@ -61,10 +62,11 @@ export async function GET(
 // PATCH /api/forms/[id] - Atualizar formulário
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -105,7 +107,7 @@ export async function PATCH(
     const { data: oldForm } = await supabase
       .from('form_definitions')
       .select('*, form_fields(*)')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (!oldForm) {
@@ -135,7 +137,7 @@ export async function PATCH(
           ? { tenant_id: tenant_id ?? null }
           : {}),
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -149,7 +151,7 @@ export async function PATCH(
       await supabase
         .from('form_fields')
         .delete()
-        .eq('form_definition_id', params.id);
+        .eq('form_definition_id', id);
 
       // Criar novos campos
       if (Array.isArray(fields) && fields.length > 0) {
@@ -160,7 +162,7 @@ export async function PATCH(
             ? (f.validation_rules as Record<string, unknown>)
             : {};
           return {
-            form_definition_id: params.id,
+            form_definition_id: id,
             label: String(f.label ?? ''),
             name: String(f.name ?? ''),
             type: String(f.type ?? ''),
@@ -188,7 +190,7 @@ export async function PATCH(
       user_id: userData.id,
       action: 'UPDATE',
       resource_type: 'form',
-      resource_id: params.id,
+      resource_id: id,
       changes: {
         old: oldForm,
         new: { name, description, is_active, settings, fields_count: fields?.length },
@@ -213,7 +215,7 @@ export async function PATCH(
           is_active
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     return NextResponse.json({ form: completeForm });
@@ -227,10 +229,11 @@ export async function PATCH(
 // DELETE /api/forms/[id] - Deletar formulário
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -253,7 +256,7 @@ export async function DELETE(
     const { data: form } = await supabase
       .from('form_definitions')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (!form) {
@@ -274,7 +277,7 @@ export async function DELETE(
     const { data: submissions } = await supabase
       .from('submissions')
       .select('id')
-      .eq('form_definition_id', params.id)
+      .eq('form_definition_id', id)
       .limit(1);
 
     if (submissions && submissions.length > 0) {
@@ -288,7 +291,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('form_definitions')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
@@ -299,7 +302,7 @@ export async function DELETE(
       user_id: userData.id,
       action: 'DELETE',
       resource_type: 'form',
-      resource_id: params.id,
+      resource_id: id,
       changes: { deleted: form },
     });
 

@@ -26,7 +26,7 @@ export async function POST(req: Request) {
 
     // Normaliza usuário para evitar 'any' no acesso aos campos
     let user: { id: string; email: string | null; user_metadata?: Record<string, unknown> } | null =
-      cookieUser ? { id: cookieUser.id, email: cookieUser.email, user_metadata: (cookieUser as unknown as { user_metadata?: Record<string, unknown> }).user_metadata } : null
+      cookieUser ? { id: cookieUser.id, email: cookieUser.email ?? null, user_metadata: (cookieUser as unknown as { user_metadata?: Record<string, unknown> }).user_metadata } : null
     if (!user) {
       const authHeader = req.headers.get('authorization') || req.headers.get('Authorization')
       const bearer = authHeader?.startsWith('Bearer ')
@@ -44,12 +44,16 @@ export async function POST(req: Request) {
 
     const admin = createAdminClient()
 
+    if (!user.email) {
+      return NextResponse.json({ error: 'email_required' }, { status: 400 })
+    }
+
     // Upsert idempotente por email: garante criação/atualização do vínculo auth_user_id
     const { data: ensured, error: upsertErr } = await admin
       .from('users')
       .upsert({
         auth_user_id: user.id,
-        email: user.email!,
+        email: user.email,
         // Extrai nome de forma segura a partir de metadados
         name:
           (typeof user.user_metadata?.name === 'string'

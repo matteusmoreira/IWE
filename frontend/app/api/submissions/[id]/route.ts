@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic';
 // GET /api/submissions/[id] - Buscar submissão por ID
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -38,7 +39,7 @@ export async function GET(
           )
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) {
@@ -56,10 +57,11 @@ export async function GET(
 // PATCH /api/submissions/[id] - Atualizar submissão
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -86,7 +88,7 @@ export async function PATCH(
     const { data: oldSubmission } = await supabase
       .from('submissions')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (!oldSubmission) {
@@ -102,7 +104,7 @@ export async function PATCH(
     const { data: submission, error: updateError } = await supabase
       .from('submissions')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -115,7 +117,7 @@ export async function PATCH(
       user_id: userData.id,
       action: 'UPDATE',
       resource_type: 'submission',
-      resource_id: params.id,
+      resource_id: id,
       changes: {
         old: oldSubmission,
         new: updateData,
@@ -133,10 +135,11 @@ export async function PATCH(
 // DELETE /api/submissions/[id] - Deletar submissão
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -159,7 +162,7 @@ export async function DELETE(
     const { data: submission } = await supabase
       .from('submissions')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (!submission) {
@@ -170,7 +173,7 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from('submissions')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
@@ -181,7 +184,7 @@ export async function DELETE(
       user_id: userData.id,
       action: 'DELETE',
       resource_type: 'submission',
-      resource_id: params.id,
+      resource_id: id,
       changes: { deleted: submission },
     });
 

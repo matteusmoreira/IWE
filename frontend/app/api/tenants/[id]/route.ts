@@ -4,10 +4,11 @@ import { createClient } from '@/lib/supabase/server';
 // GET /api/tenants/[id] - Buscar tenant por ID
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -18,7 +19,7 @@ export async function GET(
     const { data: tenant, error } = await supabase
       .from('tenants')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) {
@@ -36,10 +37,11 @@ export async function GET(
 // PATCH /api/tenants/[id] - Atualizar tenant
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -66,7 +68,7 @@ export async function PATCH(
     const { data: oldTenant } = await supabase
       .from('tenants')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     // Atualizar tenant
@@ -78,7 +80,7 @@ export async function PATCH(
         ...(status !== undefined && { status }),
         ...(settings && { settings }),
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -88,11 +90,11 @@ export async function PATCH(
 
     // Registrar auditoria
     await supabase.from('audit_logs').insert({
-      tenant_id: params.id,
+      tenant_id: id,
       user_id: userData.id,
       action: 'UPDATE',
       resource_type: 'tenant',
-      resource_id: params.id,
+      resource_id: id,
       changes: {
         old: oldTenant,
         new: { name, slug, status, settings },
@@ -110,10 +112,11 @@ export async function PATCH(
 // DELETE /api/tenants/[id] - Deletar tenant
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
+    const { id } = await context.params;
 
     // Verificar autenticação
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -136,14 +139,14 @@ export async function DELETE(
     const { data: tenant } = await supabase
       .from('tenants')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     // Deletar tenant
     const { error: deleteError } = await supabase
       .from('tenants')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 });
@@ -154,7 +157,7 @@ export async function DELETE(
       user_id: userData.id,
       action: 'DELETE',
       resource_type: 'tenant',
-      resource_id: params.id,
+      resource_id: id,
       changes: { deleted: tenant },
     });
 

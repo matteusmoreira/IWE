@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(
   request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -13,7 +13,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
   const body = (await request.json()) as Record<string, unknown>;
   const webhook_url = typeof body.webhook_url === 'string' ? body.webhook_url : undefined;
   const auth_token = typeof body.auth_token === 'string' ? body.auth_token : undefined;
@@ -82,7 +82,7 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
 
@@ -92,7 +92,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = context.params;
+  const { id } = await context.params;
 
   // Verificar se a config GLOBAL existe
   const { data: existingConfig, error: fetchError } = await supabase

@@ -7,10 +7,10 @@ const admin = createAdminClient();
 // GET /api/public/forms/by-slug/[slug] - Buscar formulário público por slug (sem autenticação)
 export async function GET(
   _request: Request,
-  { params }: { params: { slug: string } }
+  context: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const slug = params.slug;
+    const { slug } = await context.params;
 
     // Buscar formulário por slug
     const { data: form, error } = await admin
@@ -54,7 +54,7 @@ export async function GET(
     if (form.form_fields) {
       const ff = form.form_fields as Array<Record<string, unknown>>;
       ff.sort((a, b) => Number(a.order_index ?? 0) - Number(b.order_index ?? 0));
-      form.form_fields = ff.filter((field) => Boolean((field as Record<string, unknown>).is_active ?? true));
+      form.form_fields = ff.filter((field) => Boolean((field as Record<string, unknown>).is_active ?? true)) as typeof form.form_fields;
     }
 
     return NextResponse.json({ form });
