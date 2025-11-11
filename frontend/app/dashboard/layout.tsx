@@ -50,9 +50,6 @@ export default async function DashboardLayout({
   const menuItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Polos', href: '/dashboard/tenants', icon: Users },
-    ...(userRow?.role === 'admin' || userRow?.role === 'superadmin'
-      ? [{ label: 'Status Integração', href: '/dashboard/status-integracao', icon: MessageCircle }]
-      : []),
     ...(userRow?.role === 'superadmin' ? [{ label: 'Admins', href: '/dashboard/admins', icon: Shield }] : []),
     ...(userRow?.role === 'superadmin' ? [{ label: 'Formulários', href: '/dashboard/forms', icon: FileText }] : []),
     { label: 'Alunos', href: '/dashboard/submissions', icon: Users },
