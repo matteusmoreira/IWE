@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
       .createSignedUrl(storagePath, 60 * 60 * 2); // 2 horas por padrão
 
     if (error || !data?.signedUrl) {
-      return NextResponse.json({ error: 'Failed to get signed url' }, { status: 500 });
+      console.error('Erro createSignedUrl (rota autenticada /api/upload/signed-url):', error, 'path:', storagePath);
+      return NextResponse.json({ error: 'Não foi possível gerar URL assinada. Verifique se o arquivo existe e se o path está correto.' }, { status: 500 });
     }
 
     if (format === 'json') {
