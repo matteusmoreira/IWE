@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, Trash2, Loader2, Search, Download, Filter, File as FileIcon, FileText, FileImage, FileSpreadsheet, Link as LinkIcon } from 'lucide-react';
+import { Eye, Trash2, Loader2, Search, Download, Filter, File as FileIcon, FileText, FileImage, FileSpreadsheet, Link as LinkIcon, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatDisplayLabel, formatDisplayValue, formatDisplayValueByKey, formatPhone } from '@/lib/utils';
 
@@ -59,6 +59,10 @@ export default function SubmissionsPage() {
   const [deletingSubmission, setDeletingSubmission] = useState<Submission | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showDocumentColumn, setShowDocumentColumn] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
+  const [newPaymentStatus, setNewPaymentStatus] = useState<string>('PENDENTE');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Helpers locais para metadados de arquivo
   type FileMeta = { name: string; size?: number; type?: string; url?: string; storagePath?: string };
@@ -299,6 +303,46 @@ export default function SubmissionsPage() {
   const handleViewSubmission = (submission: Submission) => {
     setSelectedSubmission(submission);
     setViewDialogOpen(true);
+  };
+
+  const handleOpenEdit = (submission: Submission) => {
+    setEditingSubmission(submission);
+    setNewPaymentStatus(submission.payment_status || 'PENDENTE');
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingSubmission) return;
+    setSavingEdit(true);
+    try {
+      const response = await fetch(`/api/submissions/${editingSubmission.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_status: newPaymentStatus }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast.error(data?.error || 'Erro ao atualizar status de pagamento');
+        return;
+      }
+
+      // Atualiza estado local imediatamente
+      setSubmissions((prev) => prev.map((s) => (
+        s.id === editingSubmission.id ? { ...s, payment_status: newPaymentStatus } : s
+      )));
+      setSelectedSubmission((prev) => (
+        prev && prev.id === editingSubmission.id ? { ...prev, payment_status: newPaymentStatus } : prev
+      ));
+
+      toast.success('Status de pagamento atualizado!');
+      setEditDialogOpen(false);
+      setEditingSubmission(null);
+    } catch (err) {
+      console.error('Erro ao salvar edição de status:', err);
+      toast.error('Erro ao atualizar status de pagamento');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -702,6 +746,16 @@ export default function SubmissionsPage() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
+                          {(role === 'admin' || role === 'superadmin') && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => handleOpenEdit(submission)}
+                              title="Editar status de pagamento"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -908,6 +962,42 @@ export default function SubmissionsPage() {
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Deletar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Editar Status Pagamento */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Status de Pagamento</DialogTitle>
+            <DialogDescription>
+              {editingSubmission ? `${editingSubmission.form_definitions.name} • ${editingSubmission.tenants.name}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Novo status</Label>
+              <select
+                value={newPaymentStatus}
+                onChange={(e) => setNewPaymentStatus(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-md"
+              >
+                <option value="PENDENTE">Pendente</option>
+                <option value="PAGO">Pago</option>
+                <option value="CANCELADO">Cancelado</option>
+                <option value="NAO_APLICAVEL">N/A</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={savingEdit}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={savingEdit}>
+              {savingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>

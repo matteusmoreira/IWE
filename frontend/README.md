@@ -18,11 +18,20 @@ Fluxo de pagamento (global)
 3. O Mercado Pago envia o webhook para /api/webhooks/mercadopago.
 4. O sistema atualiza o status da submissão e dispara notificações (WhatsApp/E-mail), conforme configuração.
 
+Importante sobre back_urls (MP_PREFERENCE_ERROR invalid_back_urls)
+- O Mercado Pago pode rejeitar `back_urls` quando a `APP_URL` não é HTTPS público (ex.: `http://localhost`).
+- Para evitar erro 400 em desenvolvimento, o sistema só envia `back_urls` quando `APP_URL` começa com `https://`.
+- Em ambiente local (HTTP), a preferência é criada sem `back_urls`. O retorno do usuário após o checkout pode não redirecionar automaticamente, mas o webhook continua funcionando para atualizar o status.
+- Recomendações:
+  - Use um túnel HTTPS (ex.: `cloudflared tunnel` ou `ngrok`) e defina `APP_URL` para o domínio HTTPS público.
+  - Em produção, garanta que `APP_URL` e `NEXT_PUBLIC_APP_URL` usem HTTPS.
+
 Como testar (local)
 - Configure .env.local conforme .env.local.example.
 - Inicie o servidor: npm run dev (ou via Node se houver restrição de PowerShell, veja abaixo).
 - Submeta um formulário com require_payment=true e payment_amount>0.
 - Verifique o redirecionamento para a página de checkout (init_point).
+ - Se aparecer o erro `MP_PREFERENCE_ERROR: back_urls invalid. Wrong format`, valide se `APP_URL` é HTTPS. Em local HTTP, o sistema agora omite `back_urls` para evitar o erro.
 
 Observações
 - Configurações de WhatsApp/Moodle continuam por tenant, mas o Mercado Pago é GLOBAL.
@@ -104,3 +113,21 @@ Checklist de Deploy
 - [ ] Deploy de Produção criado.
 - [ ] `NEXT_PUBLIC_APP_URL` aponta para o domínio final.
 - [ ] Smoke test executado nas rotas principais.
+
+Edição manual de status de pagamento (Dashboard > Submissões)
+- Quem pode editar: usuários com papel `admin` ou `superadmin`.
+- Como usar:
+  - Na tabela de Alunos, clique no ícone de lápis na coluna "Ações".
+  - Selecione o novo status (Pendente, Pago, Cancelado, N/A) e clique em "Salvar".
+  - A atualização é feita via `PATCH /api/submissions/:id` e o badge é atualizado imediatamente sem recarregar a página.
+- Validações de backend:
+  - A API aceita somente os valores `PENDENTE`, `PAGO`, `CANCELADO`, `NAO_APLICAVEL`.
+  - A alteração de `payment_status` exige papel `admin` ou `superadmin` (caso contrário, `403`).
+
+Aceitação (Given–When–Then)
+- Given: estou autenticado como Admin ou Superadmin na página "Submissões".
+- When: clico em Editar, escolho "Pago" e salvo.
+- Then: o badge muda para "Pago" e a API retorna 200.
+
+Observação
+- O restante das informações de pagamento (ex.: valores e eventos de webhook) continuam automáticas e não são editadas nesta UI.

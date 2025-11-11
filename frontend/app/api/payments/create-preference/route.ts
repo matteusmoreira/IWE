@@ -87,6 +87,16 @@ export async function POST(request: Request) {
 
     const descriptor = (process.env.MP_STATEMENT_DESCRIPTOR || 'IWE').substring(0, 22);
     const isHttpsPublic = appUrl.startsWith('https://');
+    // Construção segura de URLs de retorno: alguns ambientes (http/local) são rejeitados pelo MP.
+    // Para evitar erro 400 (invalid_back_urls) em dev, só enviamos back_urls quando for HTTPS público.
+    const backUrls = isHttpsPublic
+      ? {
+          success: `${appUrl}/form/pagamento/sucesso?submission_id=${submission_id}`,
+          failure: `${appUrl}/form/pagamento/falha?submission_id=${submission_id}`,
+          pending: `${appUrl}/form/pagamento/pendente?submission_id=${submission_id}`,
+        }
+      : undefined;
+
     const preferencePayload = {
       items: [
         {
@@ -104,11 +114,7 @@ export async function POST(request: Request) {
           number: payerPhone.replace(/\D/g, ''),
         },
       },
-      back_urls: {
-        success: `${appUrl}/form/pagamento/sucesso?submission_id=${submission_id}`,
-        failure: `${appUrl}/form/pagamento/falha?submission_id=${submission_id}`,
-        pending: `${appUrl}/form/pagamento/pendente?submission_id=${submission_id}`,
-      },
+      ...(backUrls ? { back_urls: backUrls } : {}),
       // Evitar erro 400 em ambientes locais com http
       ...(isHttpsPublic ? { auto_return: 'approved' as const } : {}),
       external_reference: submission_id,

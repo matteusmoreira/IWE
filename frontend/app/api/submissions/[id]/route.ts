@@ -99,13 +99,19 @@ export async function PATCH(
     const updateData: { payment_status?: string; data?: unknown; metadata?: Record<string, unknown> } = {};
 
     // 1) Atualização manual de status de pagamento:
-    // Permitido apenas para SUPERADMIN ou ADMIN; caso contrário, retorna 403.
+    // Permitido apenas para superadmin ou admin; valida os valores aceitos.
     if (typeof payment_status !== 'undefined') {
-      const allowedRoles = ['SUPERADMIN', 'ADMIN'];
+      const allowedRoles = ['superadmin', 'admin'];
       if (!allowedRoles.includes(userData.role)) {
         return NextResponse.json({ error: 'Forbidden: you are not allowed to change payment status manually' }, { status: 403 });
       }
-      updateData.payment_status = payment_status;
+
+      const allowedStatuses = ['PENDENTE', 'PAGO', 'CANCELADO', 'NAO_APLICAVEL'];
+      const normalized = typeof payment_status === 'string' ? payment_status.toUpperCase() : '';
+      if (!allowedStatuses.includes(normalized)) {
+        return NextResponse.json({ error: 'Invalid payment_status' }, { status: 400 });
+      }
+      updateData.payment_status = normalized;
     }
 
     // 2) Atualizações de dados do formulário (sempre permitidas para usuário autenticado, respeitando RLS existente)
