@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getAppUrl, getPreferenceClientForTenant } from '@/lib/mercadopago';
+import { getAppUrl, getPreferenceClientForTenant, normalizeMpSdkError } from '@/lib/mercadopago';
 
 // Usamos o client ADMIN para bypass de RLS no backend.
 // Isso evita 404 por "submissão não encontrada" quando a política RLS bloqueia leitura com chave ANON.
@@ -126,14 +126,7 @@ export async function POST(request: Request) {
       mpData = result as unknown as Record<string, unknown>;
     } catch (sdkError: unknown) {
       console.error('Mercado Pago error (SDK):', sdkError);
-      const detail = sdkError instanceof Error ? sdkError.message : String(sdkError);
-      const meta = typeof sdkError === 'object' && sdkError !== null
-        ? {
-            status: (sdkError as Record<string, unknown>).status,
-            code: (sdkError as Record<string, unknown>).code,
-            blocked_by: (sdkError as Record<string, unknown>).blocked_by,
-          }
-        : {};
+      const { detail, meta } = normalizeMpSdkError(sdkError);
       return NextResponse.json(
         { error: 'Erro ao criar preferência de pagamento', reason: 'MP_PREFERENCE_ERROR', detail, meta },
         { status: 500 }

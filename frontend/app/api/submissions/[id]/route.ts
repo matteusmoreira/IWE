@@ -76,7 +76,7 @@ export async function PATCH(
       .eq('auth_user_id', user.id)
       .single();
 
-    if (userError) {
+    if (userError || !userData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
@@ -95,11 +95,33 @@ export async function PATCH(
       return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
     }
 
-    // Atualizar submissão
+    // Atualizar submissão com regras de permissão
     const updateData: { payment_status?: string; data?: unknown; metadata?: Record<string, unknown> } = {};
-    if (payment_status) updateData.payment_status = payment_status;
-    if (formData) updateData.data = formData;
-    if (metadata) updateData.metadata = { ...oldSubmission.metadata, ...metadata };
+
+    // 1) Atualização manual de status de pagamento:
+    // Permitido apenas para SUPERADMIN ou ADMIN; caso contrário, retorna 403.
+    if (typeof payment_status !== 'undefined') {
+      const allowedRoles = ['SUPERADMIN', 'ADMIN'];
+      if (!allowedRoles.includes(userData.role)) {
+        return NextResponse.json({ error: 'Forbidden: you are not allowed to change payment status manually' }, { status: 403 });
+      }
+      updateData.payment_status = payment_status;
+    }
+
+    // 2) Atualizações de dados do formulário (sempre permitidas para usuário autenticado, respeitando RLS existente)
+    if (typeof formData !== 'undefined') {
+      updateData.data = formData;
+    }
+
+    // 3) Merge de metadados
+    if (typeof metadata === 'object' && metadata !== null) {
+      updateData.metadata = { ...(oldSubmission.metadata || {}), ...metadata };
+    }
+
+    // Nenhuma alteração enviada
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
 
     const { data: submission, error: updateError } = await supabase
       .from('submissions')
@@ -112,7 +134,7 @@ export async function PATCH(
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    // Registrar auditoria
+    // Registrar auditoria (guarda o diff solicitado, sem expor segredos)
     await supabase.from('audit_logs').insert({
       user_id: userData.id,
       action: 'UPDATE',

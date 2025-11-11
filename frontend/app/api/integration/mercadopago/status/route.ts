@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAppUrl, getPreferenceClientForTenant, getAccessTokenForTenant, getGlobalAccessToken, maskToken } from '@/lib/mercadopago';
+import { getAppUrl, getPreferenceClientForTenant, getAccessTokenForTenant, getGlobalAccessToken, maskToken, normalizeMpSdkError } from '@/lib/mercadopago';
 
 // GET /api/integration/mercadopago/status
 // Checa rapidamente se as variáveis de ambiente estão configuradas e
@@ -103,14 +103,7 @@ export async function GET(request: Request) {
       init_point: initPoint,
     };
   } catch (sdkError: unknown) {
-    const detail = sdkError instanceof Error ? sdkError.message : String(sdkError);
-    const meta = typeof sdkError === 'object' && sdkError !== null
-      ? {
-          status: (sdkError as Record<string, unknown>).status,
-          code: (sdkError as Record<string, unknown>).code,
-          blocked_by: (sdkError as Record<string, unknown>).blocked_by,
-        }
-      : {};
+    const { detail, meta } = normalizeMpSdkError(sdkError);
     testPreference = {
       success: false,
       error: 'Erro ao criar preferência de teste',

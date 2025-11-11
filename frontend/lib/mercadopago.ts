@@ -92,3 +92,50 @@ export function maskToken(token?: string): string {
     ? `${token.slice(0, visible)}***`
     : '**********';
 }
+
+// Normaliza erros retornados pela SDK do Mercado Pago para evitar "[object Object]"
+// Retorna uma mensagem legível em `detail` e um objeto `meta` com campos não sensíveis.
+export function normalizeMpSdkError(error: unknown): { detail: string; meta: Record<string, unknown> } {
+  // Ajuda a remover chaves com undefined
+  const clean = (obj: Record<string, unknown>) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== undefined && v !== null) out[k] = v;
+    }
+    return out;
+  };
+
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, any>;
+    // A SDK normalmente traz: status, error, message, cause: [{ code, description }]
+    const message: string | undefined = typeof e.message === 'string' ? e.message : undefined;
+    const errorName: string | undefined = typeof e.error === 'string' ? e.error : undefined;
+    const causeList: Array<{ code?: string | number; description?: string }> = Array.isArray(e.cause)
+      ? e.cause.map((c: any) => ({ code: c?.code, description: c?.description }))
+      : [];
+
+    const causeText = causeList
+      .map((c) => c.description)
+      .filter((d): d is string => !!d)
+      .join(' — ');
+
+    const detail = [message, errorName, causeText].filter(Boolean).join(' — ')
+      || (typeof error === 'string' ? (error as string) : JSON.stringify(error));
+
+    const meta = clean({
+      status: typeof e.status === 'number' ? e.status : undefined,
+      error: errorName,
+      message,
+      blocked_by: e.blocked_by,
+      code: e.code,
+      request_id: e.request_id ?? e.requestId,
+      cause: causeList.length > 0 ? causeList : undefined,
+    });
+
+    return { detail, meta };
+  }
+
+  // Fallback para erros simples
+  const detail = error instanceof Error ? error.message : String(error);
+  return { detail, meta: {} };
+}
