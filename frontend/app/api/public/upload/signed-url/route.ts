@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      uploadUrl: data.signedUrl, // URL absoluta do Supabase
+      uploadUrl: data.signedUrl,
       storagePath,
       fileType,
     });
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET: Gera URL assinada de visualização para um path
+// GET: Gera URL assinada de visualização para um path (uso público controlado)
 export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient();
@@ -78,12 +78,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Parâmetro path é obrigatório' }, { status: 400 });
     }
 
+    // Garante que o path não aponte para buckets diferentes ou caminhos inseguros
+    if (storagePath.includes('..') || storagePath.startsWith('http://') || storagePath.startsWith('https://')) {
+      return NextResponse.json({ error: 'Path inválido' }, { status: 400 });
+    }
+
     const { data, error } = await admin.storage
       .from('form-submissions')
       .createSignedUrl(storagePath, expiresIn);
 
     if (error || !data?.signedUrl) {
-      console.error('Erro createSignedUrl:', error);
+      console.error('Erro createSignedUrl (público):', error, 'path:', storagePath);
       return NextResponse.json({ error: 'Não foi possível gerar URL assinada de visualização.' }, { status: 500 });
     }
 
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
     if (format === 'json') {
       return NextResponse.json({ signedUrl: data.signedUrl });
     }
-    return NextResponse.redirect(data.signedUrl);
+    return NextResponse.redirect(data.signedUrl, 302);
   } catch (err) {
     console.error('Erro (GET signed-url público):', err);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
