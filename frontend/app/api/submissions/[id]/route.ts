@@ -137,6 +137,11 @@ export async function PATCH(
       .single();
 
     if (updateError) {
+      const msg = String(updateError.message || '').toLowerCase();
+      // Mapear erros de RLS/permissão para 403, para não parecer erro interno
+      if (msg.includes('row level security') || msg.includes('permission denied')) {
+        return NextResponse.json({ error: 'Forbidden by RLS: você não tem permissão para atualizar esta submissão.' }, { status: 403 });
+      }
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
