@@ -969,20 +969,23 @@ export default function SubmissionsPage() {
 
       {/* Dialog Editar Status Pagamento */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
+        {/* Ajuste fino: largura moderada e padding consistente */}
+        <DialogContent className="sm:max-w-md">
+          {/* Header com menor espaçamento vertical */}
+          <DialogHeader className="p-5 pb-3 space-y-1">
             <DialogTitle>Editar Status de Pagamento</DialogTitle>
             <DialogDescription>
               {editingSubmission ? `${editingSubmission.form_definitions.name} • ${editingSubmission.tenants.name}` : ''}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Novo status</Label>
+          {/* Corpo com padding interno e espaçamentos reduzidos para ficar mais compacto */}
+          <div className="p-5 pt-0 space-y-3">
+            <div className="space-y-1">
+              <Label className="mb-1">Novo status</Label>
               <select
                 value={newPaymentStatus}
                 onChange={(e) => setNewPaymentStatus(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-md"
+                className="w-full h-10 px-3 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="PENDENTE">Pendente</option>
                 <option value="PAGO">Pago</option>
@@ -991,11 +994,12 @@ export default function SubmissionsPage() {
               </select>
             </div>
           </div>
-          <DialogFooter>
+          {/* Footer com padding alinhado ao corpo e botão Salvar em vermelho */}
+          <DialogFooter className="p-5 pt-0">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={savingEdit}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveEdit} disabled={savingEdit}>
+            <Button variant="destructive" onClick={handleSaveEdit} disabled={savingEdit}>
               {savingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar
             </Button>
