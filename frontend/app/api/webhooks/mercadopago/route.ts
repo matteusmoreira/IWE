@@ -408,13 +408,18 @@ async function sendToMoodle(submission: SubmissionRow) {
     }
 
     // Preparar payload
+    const studentData = (submission.data || {}) as Record<string, unknown>;
+
     const payload: Record<string, unknown> = {
       submission_id: submission.id,
       tenant_id: submission.tenant_id,
       tenant_name: submission.tenants?.name,
-      student_data: submission.data as Record<string, unknown>,
       payment_amount: submission.payment_amount,
       payment_date: submission.payment_date,
+      // Mantém campo agrupado para retrocompatibilidade
+      student_data: studentData,
+      // Envia todos os campos do formulário "achatados" na raiz para o n8n/Moodle
+      ...studentData,
     };
 
     // Enviar para n8n

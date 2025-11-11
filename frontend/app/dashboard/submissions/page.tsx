@@ -434,11 +434,13 @@ export default function SubmissionsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Submissões</h1>
-          <p className="text-muted-foreground">Gerencie as inscrições e submissões de formulários</p>
+          <h1 className="text-2xl font-bold tracking-tight">Alunos</h1>
+          <p className="text-sm text-muted-foreground">
+            Visualize e gerencie as submissões realizadas pelos alunos.
+          </p>
         </div>
         <Button
           onClick={exportToXLS}
@@ -533,7 +535,7 @@ export default function SubmissionsPage() {
       {/* Tabela */}
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Submissões</CardTitle>
+          <CardTitle>Alunos</CardTitle>
           <CardDescription>
             {total} {total === 1 ? 'submissão encontrada' : 'submissões encontradas'}
           </CardDescription>

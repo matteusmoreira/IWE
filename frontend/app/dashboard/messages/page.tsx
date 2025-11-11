@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,7 @@ import { formatCEP, formatPhone as maskPhone, formatRG } from "@/lib/masks";
 
 type Tenant = { id: string; name: string; slug: string };
 type Template = { id: string; key: string; title: string; content: string; is_active: boolean };
-type Submission = { id: string; tenant_id: string; data: any };
+type Submission = { id: string; tenant_id: string; data: any; tenants?: { id: string; name: string; slug: string } };
 
 export default function MessagesPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -33,6 +34,8 @@ export default function MessagesPage() {
   const [limit, setLimit] = useState<number>(20);
   const [total, setTotal] = useState<number>(0);
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  // Visualização (lista ou grade)
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [schedule, setSchedule] = useState<boolean>(false);
   const [scheduleAt, setScheduleAt] = useState<string>("");
   const [processing, setProcessing] = useState<boolean>(false);
@@ -336,7 +339,16 @@ export default function MessagesPage() {
         <div>
           <Label>Buscar alunos</Label>
           <Input placeholder="Nome, e-mail ou telefone" autoComplete="off" value={search} onChange={(e) => setSearch(e.target.value)} className="mt-1" />
-          <div className="max-h-96 md:max-h-[480px] overflow-auto mt-2 border rounded">
+          {/* Alternador de visualização */}
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-muted-foreground">Visualização:</span>
+            <div className="flex gap-1">
+              <Button type="button" size="sm" variant={viewMode === 'list' ? 'default' : 'outline'} onClick={() => setViewMode('list')}>Lista</Button>
+              <Button type="button" size="sm" variant={viewMode === 'grid' ? 'default' : 'outline'} onClick={() => setViewMode('grid')}>Grade</Button>
+            </div>
+          </div>
+
+          <div className={`max-h-96 md:max-h-[480px] overflow-auto mt-2 border rounded ${viewMode === 'grid' ? 'p-2' : ''} ${viewMode === 'list' ? 'divide-y' : ''} ${viewMode === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2' : ''}`}>
             {loadingSubmissions && (
               <div className="p-2 text-sm text-muted-foreground">Carregando alunos...</div>
             )}
@@ -369,10 +381,44 @@ export default function MessagesPage() {
                 || getValueByContains(["nome","aluno","name"], data);
               const phoneRaw = getValueByKeys(["whatsapp","telefone","phone","celular"], data)
                 || getValueByContains(["whats","zap","tel","fone","cel","telefone","celular","phone"], data);
+              const poloFromData = getValueByKeys(["polo","polo_nome","poloName"], data)
+                || getValueByContains(["polo"], data);
+              const polo = poloFromData || (s as any)?.tenants?.name || "";
 
               const id = `submission-${s.id}`;
+              if (viewMode === 'grid') {
+                return (
+                  <label key={s.id} htmlFor={id} className="group block rounded border p-3 hover:bg-muted/40 transition-colors cursor-pointer">
+                    <div className="flex items-start gap-3">
+                      <input
+                        id={id}
+                        type="checkbox"
+                        className="mt-1"
+                        checked={selectedSubmissionIds.includes(s.id)}
+                        onChange={(e) => {
+                          setSelectedSubmissionIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id));
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm truncate">{name || "Aluno"}</span>
+                          {polo && (
+                            <Badge variant="outline" className="text-[10px]">Polo: {polo}</Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1 truncate">
+                          {phoneRaw && (
+                            <span>WhatsApp: {maskPhone(phoneRaw)}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                );
+              }
+              // Modo lista (padrão)
               return (
-                <label key={s.id} htmlFor={id} className="flex items-center gap-2 p-2 border-b">
+                <label key={s.id} htmlFor={id} className="flex items-center gap-2 p-2 cursor-pointer">
                   <input
                     id={id}
                     type="checkbox"
@@ -381,10 +427,13 @@ export default function MessagesPage() {
                       setSelectedSubmissionIds(prev => e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id));
                     }}
                   />
-                  <span className="text-sm">
-                    <span className="font-bold">{name || "Aluno"}</span>
+                  <span className="text-sm truncate">
+                    <span className="font-semibold">{name || "Aluno"}</span>
                     {phoneRaw && (
-                      <span className="font-bold"> • WhatsApp: {maskPhone(phoneRaw)}</span>
+                      <span className="font-semibold"> • WhatsApp: {maskPhone(phoneRaw)}</span>
+                    )}
+                    {polo && (
+                      <span className="font-semibold"> • Polo: {polo}</span>
                     )}
                   </span>
                 </label>
