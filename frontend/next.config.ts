@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import withPWAInit from "@ducanh2912/next-pwa";
 
 function getSupabaseHostname() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,7 +12,7 @@ function getSupabaseHostname() {
   }
 }
 
-const nextConfig: NextConfig = {
+const baseConfig: NextConfig = {
   eslint: {
     // Revertido: falhar build em erros de lint (padrão Next.js). Avisos continuam não bloqueando.
     ignoreDuringBuilds: false,
@@ -30,4 +31,15 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const withPWA = withPWAInit({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  cacheOnFrontEndNav: true,
+  fallbacks: {
+    document: '/offline',
+  },
+  disable: process.env.NEXT_PUBLIC_PWA_ENABLE !== 'true',
+});
+
+export default withPWA(baseConfig);

@@ -96,26 +96,28 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="text-center md:text-left">
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">Visão geral e métricas do sistema</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchMetrics}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          <span className="ml-2">Atualizar</span>
-        </Button>
+        <div className="w-full md:w-auto flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchMetrics}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            <span className="ml-2">Atualizar</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

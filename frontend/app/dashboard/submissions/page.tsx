@@ -64,6 +64,9 @@ export default function SubmissionsPage() {
   const [newPaymentStatus, setNewPaymentStatus] = useState<string>('PENDENTE');
   const [savingEdit, setSavingEdit] = useState(false);
   const [verifyingId, setVerifyingId] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(20);
 
   // Helpers locais para metadados de arquivo
   type FileMeta = { name: string; size?: number; type?: string; url?: string; storagePath?: string };
@@ -268,6 +271,10 @@ export default function SubmissionsPage() {
 
   useEffect(() => {
     fetchSubmissions();
+  }, [searchTerm, paymentStatusFilter, selectedTenantId, page, limit]);
+
+  useEffect(() => {
+    setPage(1);
   }, [searchTerm, paymentStatusFilter, selectedTenantId]);
 
   const fetchSubmissions = async () => {
@@ -280,6 +287,8 @@ export default function SubmissionsPage() {
       if (selectedTenantId) params.append('tenant_id', selectedTenantId);
       // Evitar retorno em cache e garantir atualização pós-exclusão
       params.append('_ts', String(Date.now()));
+      params.append('limit', String(limit));
+      params.append('offset', String((page - 1) * limit));
 
       const response = await fetch(`/api/submissions?${params.toString()}` , {
         cache: 'no-store',
@@ -499,22 +508,24 @@ export default function SubmissionsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="space-y-6 p-4 md:p-0">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="text-center md:text-left">
           <h1 className="text-2xl font-bold tracking-tight">Alunos</h1>
           <p className="text-sm text-muted-foreground">
             Visualize e gerencie as submissões realizadas pelos alunos.
           </p>
         </div>
-        <Button
-          onClick={exportToXLS}
-          variant="outline"
-          disabled={submissions.length === 0}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Exportar XLS
-        </Button>
+        <div className="w-full md:w-auto flex justify-center">
+          <Button
+            onClick={exportToXLS}
+            variant="outline"
+            disabled={submissions.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Exportar XLS
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -600,17 +611,37 @@ export default function SubmissionsPage() {
       {/* Tabela */}
       <Card>
         <CardHeader>
-          <CardTitle>Alunos</CardTitle>
-          <CardDescription>
-            {total} {total === 1 ? 'submissão encontrada' : 'submissões encontradas'}
-          </CardDescription>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <CardTitle>Alunos</CardTitle>
+              <CardDescription>
+                {total} {total === 1 ? 'submissão encontrada' : 'submissões encontradas'}
+              </CardDescription>
+            </div>
+            <div className="w-full md:w-auto flex justify-center gap-2">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+              >
+                Grade
+              </Button>
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('table')}
+              >
+                Lista
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {submissions.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">Nenhuma submissão encontrada.</p>
             </div>
-          ) : (
+          ) : viewMode === 'table' ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -809,7 +840,91 @@ export default function SubmissionsPage() {
                 </TableBody>
               </Table>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {submissions.map((submission) => {
+                const studentName = findStudentName(submission.data);
+                const whatsappRaw = findWhatsapp(submission.data);
+                return (
+                  <div key={submission.id} className="border rounded-lg p-4 bg-card overflow-hidden">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-base truncate">{studentName || '-'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{submission.tenants.name}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-1">{whatsappRaw ? formatPhone(whatsappRaw) : '-'}</p>
+                      </div>
+                      <Badge variant={getPaymentStatusColor(submission.payment_status)}>
+                        {getPaymentStatusLabel(submission.payment_status)}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">{formatDate(submission.created_at)}</div>
+                    <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewSubmission(submission)}
+                        className="w-full sm:w-auto"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Ver
+                      </Button>
+                      {(role === 'admin' || role === 'superadmin') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenEdit(submission)}
+                          className="w-full sm:w-auto"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Editar
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { setDeletingSubmission(submission); setDeleteDialogOpen(true); }}
+                        className="w-full sm:w-auto"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                        Remover
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center gap-2 text-sm">
+              <span>Itens por página</span>
+              <select
+                value={limit}
+                onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+                className="px-2 py-1 border rounded"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+              >Anterior</Button>
+              <div className="text-xs text-muted-foreground">
+                Página {Math.max(1, page)} de {Math.max(1, Math.ceil((total || 0) / limit) || 1)}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= Math.ceil((total || 0) / limit) || loading}
+              >Próxima</Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1001,6 +1116,7 @@ export default function SubmissionsPage() {
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -1008,6 +1124,7 @@ export default function SubmissionsPage() {
               variant="destructive"
               onClick={handleDelete}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Deletar
@@ -1045,10 +1162,10 @@ export default function SubmissionsPage() {
           </div>
           {/* Footer com padding alinhado ao corpo e botão Salvar em vermelho */}
           <DialogFooter className="p-5 pt-0">
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={savingEdit}>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={savingEdit} className="w-full sm:w-auto">
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={handleSaveEdit} disabled={savingEdit}>
+            <Button variant="destructive" onClick={handleSaveEdit} disabled={savingEdit} className="w-full sm:w-auto">
               {savingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar
             </Button>

@@ -402,10 +402,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6">
       {role !== 'admin' && (
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div className="text-center md:text-left">
             <h1 className="text-3xl font-bold">Configurações</h1>
             <p className="text-muted-foreground">Configure integrações e webhooks</p>
           </div>

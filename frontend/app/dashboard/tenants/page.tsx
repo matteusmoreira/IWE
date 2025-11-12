@@ -184,17 +184,19 @@ export default function TenantsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="p-4 md:p-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="text-center md:text-left">
           <h1 className="text-3xl font-bold">Polos</h1>
           <p className="text-muted-foreground">Gerencie os polos (tenants) do sistema</p>
         </div>
         {role === 'superadmin' && (
-          <Button onClick={() => handleOpenDialog()} className="bg-brand-primary hover:bg-brand-primary/90">
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Polo
-          </Button>
+          <div className="w-full md:w-auto flex justify-center">
+            <Button onClick={() => handleOpenDialog()} className="bg-brand-primary hover:bg-brand-primary/90">
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Polo
+            </Button>
+          </div>
         )}
       </div>
 
@@ -321,24 +323,26 @@ export default function TenantsPage() {
                 <Label htmlFor="status" className="cursor-pointer">Polo ativo</Label>
               </div>
             </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-                disabled={submitting}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="bg-brand-primary hover:bg-brand-primary/90"
-                disabled={submitting}
-              >
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingTenant ? 'Atualizar' : 'Criar'}
-              </Button>
-            </DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={submitting}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              className="bg-brand-primary hover:bg-brand-primary/90"
+              disabled={submitting}
+              className="w-full sm:w-auto"
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingTenant ? 'Atualizar' : 'Criar'}
+            </Button>
+          </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -360,6 +364,7 @@ export default function TenantsPage() {
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -368,6 +373,7 @@ export default function TenantsPage() {
               variant="destructive"
               onClick={handleDelete}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Deletar

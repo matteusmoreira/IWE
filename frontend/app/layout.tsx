@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
+import InstallPWAButton from "../components/InstallPWAButton";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -12,6 +13,13 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "IWE - Sistema de Gestão de Matrículas",
   description: "Plataforma multi-tenant de gestão educacional com integração Mercado Pago, WhatsApp e Moodle",
+  applicationName: "IWE",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "IWE",
+  },
   icons: {
     icon: "/logo.png",
     shortcut: "/logo.png",
@@ -29,6 +37,7 @@ export default function RootLayout({
       <body className={`${montserrat.variable} font-sans antialiased`}>
         {children}
         <Toaster position="top-right" richColors />
+        <InstallPWAButton />
       </body>
     </html>
   );

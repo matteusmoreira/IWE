@@ -23,7 +23,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { Plus, Edit2, Trash2, Loader2, Shield, User } from 'lucide-react';
+import { Plus, Edit2, Trash2, Loader2, Shield, User, LayoutGrid, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/utils';
 
@@ -56,6 +56,7 @@ export default function AdminsPage() {
   const [editingAdmin, setEditingAdmin] = useState<Admin | null>(null);
   const [deletingAdmin, setDeletingAdmin] = useState<Admin | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [view, setView] = useState<'cards' | 'table'>('cards');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -223,24 +224,50 @@ export default function AdminsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="p-4 md:p-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="text-center md:text-left">
           <h1 className="text-3xl font-bold">Administradores</h1>
           <p className="text-muted-foreground">Gerencie os usuários administradores do sistema</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="bg-brand-primary hover:bg-brand-primary/90">
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Admin
-        </Button>
+        <div className="w-full md:w-auto flex justify-center">
+          <Button onClick={() => handleOpenDialog()} className="bg-brand-primary hover:bg-brand-primary/90">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Admin
+          </Button>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Administradores</CardTitle>
-          <CardDescription>
-            {admins.length} {admins.length === 1 ? 'administrador cadastrado' : 'administradores cadastrados'}
-          </CardDescription>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <div>
+              <CardTitle>Lista de Administradores</CardTitle>
+              <CardDescription>
+                {admins.length} {admins.length === 1 ? 'administrador cadastrado' : 'administradores cadastrados'}
+              </CardDescription>
+            </div>
+            <div className="w-full md:w-auto flex justify-center gap-2">
+              <Button
+                variant={view === 'cards' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setView('cards')}
+                aria-label="Grande"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Grande
+              </Button>
+              <Button
+                variant={view === 'table' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setView('table')}
+                aria-label="Lista"
+              >
+                <List className="w-4 h-4" />
+                Lista
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {admins.length === 0 ? (
@@ -248,74 +275,136 @@ export default function AdminsPage() {
               <p className="text-muted-foreground">Nenhum administrador cadastrado ainda.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Polos Vinculados</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Criado em</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {admins.map((admin) => (
-                  <TableRow key={admin.id}>
-                    <TableCell className="font-medium">{admin.name}</TableCell>
-                    <TableCell>{admin.email}</TableCell>
-                    <TableCell>
-                      <Badge variant={admin.role === 'superadmin' ? 'default' : 'secondary'}>
-                        {admin.role === 'superadmin' ? (
-                          <><Shield className="w-3 h-3 mr-1" /> Superadmin</>
+            view === 'table' ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Função</TableHead>
+                    <TableHead className="hidden md:table-cell">Polos</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="hidden md:table-cell">Criado em</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {admins.map((admin) => (
+                    <TableRow key={admin.id}>
+                      <TableCell className="font-medium">{admin.name}</TableCell>
+                      <TableCell className="break-all">{admin.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={admin.role === 'superadmin' ? 'default' : 'secondary'}>
+                          {admin.role === 'superadmin' ? (
+                            <><Shield className="w-3 h-3 mr-1" /> Superadmin</>
+                          ) : (
+                            <><User className="w-3 h-3 mr-1" /> Admin</>
+                          )}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {admin.admin_tenants && admin.admin_tenants.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {admin.admin_tenants.map((at) => (
+                              <Badge key={at.tenant_id} variant="outline" className="text-xs">
+                                {at.tenants.name}
+                              </Badge>
+                            ))}
+                          </div>
                         ) : (
-                          <><User className="w-3 h-3 mr-1" /> Admin</>
+                          <span className="text-muted-foreground text-sm">Nenhum</span>
                         )}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {admin.admin_tenants && admin.admin_tenants.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {admin.admin_tenants.map((at) => (
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={admin.is_active ? 'success' : 'destructive'}>
+                          {admin.is_active ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">{formatDate(admin.created_at)}</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenDialog(admin)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setDeletingAdmin(admin);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {admins.map((admin) => (
+                  <div key={admin.id} className="border rounded-lg p-4 bg-card overflow-hidden">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-base">{admin.name}</p>
+                        <p className="text-sm text-muted-foreground break-all">{admin.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={admin.role === 'superadmin' ? 'default' : 'secondary'}>
+                          {admin.role === 'superadmin' ? (
+                            <><Shield className="w-3 h-3 mr-1" /> Superadmin</>
+                          ) : (
+                            <><User className="w-3 h-3 mr-1" /> Admin</>
+                          )}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex flex-wrap gap-1">
+                        {admin.admin_tenants && admin.admin_tenants.length > 0 ? (
+                          admin.admin_tenants.slice(0, 3).map((at) => (
                             <Badge key={at.tenant_id} variant="outline" className="text-xs">
                               {at.tenants.name}
                             </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">Nenhum</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Nenhum polo</span>
+                        )}
+                        {admin.admin_tenants && admin.admin_tenants.length > 3 && (
+                          <Badge variant="outline" className="text-xs">+{admin.admin_tenants.length - 3}</Badge>
+                        )}
+                      </div>
                       <Badge variant={admin.is_active ? 'success' : 'destructive'}>
                         {admin.is_active ? 'Ativo' : 'Inativo'}
                       </Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(admin.created_at)}</TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleOpenDialog(admin)}
-                      >
-                        <Edit2 className="h-4 w-4" />
+                    </div>
+                    <div className="mt-3 text-xs text-muted-foreground">Criado em {formatDate(admin.created_at)}</div>
+                    <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleOpenDialog(admin)} className="w-full sm:w-auto">
+                        <Edit2 className="w-4 h-4" />
+                        Editar
                       </Button>
                       <Button
-                        variant="ghost"
-                        size="icon"
+                        variant="outline"
+                        size="sm"
                         onClick={() => {
                           setDeletingAdmin(admin);
                           setDeleteDialogOpen(true);
                         }}
+                        className="w-full sm:w-auto"
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                        Remover
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            )
           )}
         </CardContent>
       </Card>
@@ -333,7 +422,7 @@ export default function AdminsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome Completo *</Label>
                   <Input
@@ -359,7 +448,7 @@ export default function AdminsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone">Telefone</Label>
                   <Input
@@ -436,24 +525,26 @@ export default function AdminsPage() {
                 <Label htmlFor="is_active" className="cursor-pointer">Usuário ativo</Label>
               </div>
             </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-                disabled={submitting}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="bg-brand-primary hover:bg-brand-primary/90"
-                disabled={submitting}
-              >
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingAdmin ? 'Atualizar' : 'Criar'}
-              </Button>
-            </DialogFooter>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={submitting}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              className="bg-brand-primary hover:bg-brand-primary/90"
+              disabled={submitting}
+              className="w-full sm:w-auto"
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingAdmin ? 'Atualizar' : 'Criar'}
+            </Button>
+          </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -475,6 +566,7 @@ export default function AdminsPage() {
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -483,6 +575,7 @@ export default function AdminsPage() {
               variant="destructive"
               onClick={handleDelete}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Deletar

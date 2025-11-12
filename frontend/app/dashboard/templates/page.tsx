@@ -292,12 +292,14 @@ export default function TemplatesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Templates</h1>
-        <Link href={`/dashboard/messages`} className="text-sm text-blue-600 underline">
-          Ir para Mensagens
-        </Link>
+    <div className="space-y-6 p-4 md:p-0">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <h1 className="text-2xl font-semibold text-center md:text-left">Templates</h1>
+        <div className="w-full md:w-auto flex justify-center">
+          <Link href={`/dashboard/messages`} className="text-sm text-blue-600 underline">
+            Ir para Mensagens
+          </Link>
+        </div>
       </div>
 
       <Card>
@@ -398,7 +400,7 @@ export default function TemplatesPage() {
           ) : (
             <div className="space-y-4">
               {filteredTemplates.map((t) => (
-                <div key={t.id} className="border rounded p-4">
+                <div key={t.id} className="border rounded p-4 overflow-hidden">
                   {!editing[t.id] ? (
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-start">
                       <div className="md:col-span-2">
@@ -410,9 +412,9 @@ export default function TemplatesPage() {
                       <div className="md:col-span-3">
                         <pre className="text-sm whitespace-pre-wrap">{t.content}</pre>
                       </div>
-                      <div className="flex gap-2 mt-2 md:mt-0">
-                        <Button variant="secondary" onClick={() => startEdit(t)}>Editar</Button>
-                        <Button variant="destructive" onClick={() => deleteTemplate(t)}>Excluir</Button>
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-2 md:mt-0">
+                        <Button variant="secondary" onClick={() => startEdit(t)} className="w-full sm:w-auto">Editar</Button>
+                        <Button variant="destructive" onClick={() => deleteTemplate(t)} className="w-full sm:w-auto">Excluir</Button>
                       </div>
                     </div>
                   ) : (
@@ -456,9 +458,9 @@ export default function TemplatesPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button onClick={() => saveEdit(t)}>Salvar</Button>
-                        <Button variant="secondary" onClick={() => cancelEdit(t.id)}>Cancelar</Button>
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                        <Button onClick={() => saveEdit(t)} className="w-full sm:w-auto">Salvar</Button>
+                        <Button variant="secondary" onClick={() => cancelEdit(t.id)} className="w-full sm:w-auto">Cancelar</Button>
                       </div>
                     </div>
                   )}

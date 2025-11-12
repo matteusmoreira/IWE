@@ -100,19 +100,21 @@ export default function FormsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="p-4 md:p-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div className="text-center md:text-left">
           <h1 className="text-3xl font-bold">Formulários</h1>
           <p className="text-muted-foreground">Crie e gerencie formulários personalizados</p>
         </div>
-        <Button 
-          onClick={() => router.push('/dashboard/forms/new')} 
-          className="bg-brand-primary hover:bg-brand-primary/90"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Formulário
-        </Button>
+        <div className="w-full md:w-auto flex justify-center">
+          <Button 
+            onClick={() => router.push('/dashboard/forms/new')} 
+            className="bg-brand-primary hover:bg-brand-primary/90"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Formulário
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -230,6 +232,7 @@ export default function FormsPage() {
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -237,6 +240,7 @@ export default function FormsPage() {
               variant="destructive"
               onClick={handleDelete}
               disabled={submitting}
+              className="w-full sm:w-auto"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Deletar

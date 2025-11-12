@@ -305,9 +305,11 @@ export default function MessagesPage() {
 
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-xl font-semibold">Mensagens</h1>
-        <Button variant="outline" onClick={handleProcessDue} disabled={processing}>Executar agendamentos vencidos</Button>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+        <h1 className="text-xl font-semibold text-center md:text-left">Mensagens</h1>
+        <div className="w-full md:w-auto flex justify-center">
+          <Button variant="outline" onClick={handleProcessDue} disabled={processing}>Executar agendamentos vencidos</Button>
+        </div>
       </div>
 
       <Card className="p-4 mb-4">

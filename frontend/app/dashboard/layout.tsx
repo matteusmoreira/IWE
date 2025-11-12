@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import DarkModeButton from '@/components/dashboard/DarkModeButton';
 import LogoutButton from '@/components/dashboard/LogoutButton';
+import MobileNav from '@/components/dashboard/MobileNav';
 
 export default async function DashboardLayout({
   children,
@@ -48,22 +49,20 @@ export default async function DashboardLayout({
 
   // Menu conforme papel do usuário
   const menuItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Polos', href: '/dashboard/tenants', icon: Users },
-    ...(userRow?.role === 'superadmin' ? [{ label: 'Admins', href: '/dashboard/admins', icon: Shield }] : []),
-    ...(userRow?.role === 'superadmin' ? [{ label: 'Formulários', href: '/dashboard/forms', icon: FileText }] : []),
-    { label: 'Alunos', href: '/dashboard/submissions', icon: Users },
-    { label: 'Mensagens', href: '/dashboard/messages', icon: MessageCircle },
-    { label: 'Templates', href: '/dashboard/templates', icon: FileText },
-    ...(userRow?.role === 'superadmin' ? [{ label: 'Configurações', href: '/dashboard/settings', icon: Settings }] : []),
+    { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
+    { label: 'Polos', href: '/dashboard/tenants', icon: 'users' },
+    ...(userRow?.role === 'superadmin' ? [{ label: 'Admins', href: '/dashboard/admins', icon: 'shield' }] : []),
+    ...(userRow?.role === 'superadmin' ? [{ label: 'Formulários', href: '/dashboard/forms', icon: 'fileText' }] : []),
+    { label: 'Alunos', href: '/dashboard/submissions', icon: 'users' },
+    { label: 'Mensagens', href: '/dashboard/messages', icon: 'messageCircle' },
+    { label: 'Templates', href: '/dashboard/templates', icon: 'fileText' },
+    ...(userRow?.role === 'superadmin' ? [{ label: 'Configurações', href: '/dashboard/settings', icon: 'settings' }] : []),
   ];
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar fixa (sem hidratação) */}
       <aside
-        className="fixed top-0 left-0 z-40 h-screen bg-card border-r border-border"
-        style={{ width: '240px' }}
+        className="fixed top-0 left-0 z-40 h-screen bg-card border-r border-border hidden md:block w-60"
       >
         <div className="h-full px-3 py-4 overflow-y-auto">
           <div className="flex items-center mb-5 px-3">
@@ -73,7 +72,16 @@ export default async function DashboardLayout({
             {menuItems.map((item) => (
               <li key={item.href}>
                 <Link href={item.href} className="flex items-center p-2 rounded-lg hover:bg-muted group">
-                  <item.icon className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
+                  {(() => {
+                    const Icon =
+                      item.icon === 'dashboard' ? LayoutDashboard :
+                      item.icon === 'users' ? Users :
+                      item.icon === 'shield' ? Shield :
+                      item.icon === 'fileText' ? FileText :
+                      item.icon === 'messageCircle' ? MessageCircle :
+                      Settings
+                    return <Icon className="w-5 h-5 text-muted-foreground group-hover:text-foreground" />
+                  })()}
                   <span className="ml-3">{item.label}</span>
                 </Link>
               </li>
@@ -82,13 +90,10 @@ export default async function DashboardLayout({
         </div>
       </aside>
 
-      {/* Conteúdo principal com margem fixa para a sidebar */}
-      <div className="ml-60">
-        {/* Topbar */}
+      <div className="md:ml-60">
         <header className="sticky top-0 z-30 bg-card border-b border-border">
           <div className="px-4 py-3 flex items-center justify-between">
-            {/* Sem botão de toggle por enquanto para reduzir hidratação */}
-            <div />
+            <MobileNav menuItems={menuItems} />
             <div className="flex items-center gap-4">
               <DarkModeButton />
               <div className="flex items-center gap-3">
@@ -101,7 +106,7 @@ export default async function DashboardLayout({
             </div>
           </div>
         </header>
-        <main>{children}</main>
+        <main className="p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
