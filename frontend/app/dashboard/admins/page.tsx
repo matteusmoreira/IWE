@@ -537,9 +537,8 @@ export default function AdminsPage() {
             </Button>
             <Button
               type="submit"
-              className="bg-brand-primary hover:bg-brand-primary/90"
+              className="bg-brand-primary hover:bg-brand-primary/90 w-full sm:w-auto"
               disabled={submitting}
-              className="w-full sm:w-auto"
             >
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingAdmin ? 'Atualizar' : 'Criar'}

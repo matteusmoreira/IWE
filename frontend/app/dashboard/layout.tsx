@@ -48,16 +48,19 @@ export default async function DashboardLayout({
   }
 
   // Menu conforme papel do usuário
-  const menuItems = [
+  type MenuIcon = 'users' | 'settings' | 'dashboard' | 'shield' | 'fileText' | 'messageCircle'
+  const menuItems: { label: string; href: string; icon: MenuIcon }[] = [
     { label: 'Dashboard', href: '/dashboard', icon: 'dashboard' },
     { label: 'Polos', href: '/dashboard/tenants', icon: 'users' },
-    ...(userRow?.role === 'superadmin' ? [{ label: 'Admins', href: '/dashboard/admins', icon: 'shield' }] : []),
-    ...(userRow?.role === 'superadmin' ? [{ label: 'Formulários', href: '/dashboard/forms', icon: 'fileText' }] : []),
     { label: 'Alunos', href: '/dashboard/submissions', icon: 'users' },
     { label: 'Mensagens', href: '/dashboard/messages', icon: 'messageCircle' },
     { label: 'Templates', href: '/dashboard/templates', icon: 'fileText' },
-    ...(userRow?.role === 'superadmin' ? [{ label: 'Configurações', href: '/dashboard/settings', icon: 'settings' }] : []),
-  ];
+  ]
+  if (userRow?.role === 'superadmin') {
+    menuItems.push({ label: 'Admins', href: '/dashboard/admins', icon: 'shield' })
+    menuItems.push({ label: 'Formulários', href: '/dashboard/forms', icon: 'fileText' })
+    menuItems.push({ label: 'Configurações', href: '/dashboard/settings', icon: 'settings' })
+  }
 
   return (
     <div className="min-h-screen bg-background">

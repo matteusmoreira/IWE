@@ -34,12 +34,15 @@ const baseConfig: NextConfig = {
 const withPWA = withPWAInit({
   dest: 'public',
   register: true,
-  skipWaiting: true,
   cacheOnFrontEndNav: true,
   fallbacks: {
     document: '/offline',
   },
   disable: process.env.NEXT_PUBLIC_PWA_ENABLE !== 'true',
+  workboxOptions: {
+    skipWaiting: true,
+    clientsClaim: true,
+  },
 });
 
 export default withPWA(baseConfig);

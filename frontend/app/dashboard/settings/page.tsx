@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Save, Settings as SettingsIcon, CreditCard, MessageCircle, Webhook, CheckCircle, XCircle, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('mercadopago');
@@ -765,11 +766,13 @@ export default function SettingsPage() {
                         </div>
                         {whatsappQrData.qrcode_base64 ? (
                           <div className="flex flex-col items-start">
-                            <img
+                            <Image
                               src={`data:image/png;base64,${whatsappQrData.qrcode_base64}`}
                               alt="QR Code WhatsApp"
+                              width={240}
+                              height={240}
+                              unoptimized
                               className="border rounded p-2 bg-white dark:bg-gray-800"
-                              style={{ maxWidth: 240 }}
                             />
                             <p className="mt-2 text-xs text-muted-foreground">Escaneie este QR Code no WhatsApp para conectar.</p>
                           </div>
