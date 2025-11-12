@@ -31,6 +31,29 @@ export default function PublicFormPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [tenants, setTenants] = useState<{ id: string; name: string; slug?: string }[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
+  const [waitingPayment, setWaitingPayment] = useState(false);
+  const pollPaymentStatus = useCallback((id: string) => {
+    let active = true;
+    const check = async () => {
+      try {
+        const res = await fetch(`/api/payments/status/${id}`);
+        const data = await res.json();
+        if (res.ok && data?.status) {
+          if (data.status === 'PAGO') {
+            window.location.href = `/form/pagamento/sucesso?submission_id=${id}`;
+            return;
+          }
+          if (data.status === 'CANCELADO') {
+            window.location.href = `/form/pagamento/falha?submission_id=${id}`;
+            return;
+          }
+        }
+      } catch {}
+      if (active) setTimeout(check, 5000);
+    };
+    check();
+    return () => { active = false; };
+  }, []);
 
   // Efeito de carregamento do formulário é definido após a função fetchForm
 
@@ -246,8 +269,9 @@ export default function PublicFormPage() {
           const paymentData = await paymentResponse.json();
 
           if (paymentResponse.ok && paymentData.init_point) {
-            // Redirecionar para checkout do Mercado Pago
-            window.location.href = paymentData.init_point;
+            window.open(paymentData.init_point, '_blank');
+            setWaitingPayment(true);
+            pollPaymentStatus(String(data.submission_id));
             return;
           } else {
             // Exibir mensagem detalhada vinda do backend quando disponível
@@ -703,6 +727,17 @@ export default function PublicFormPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-primary/10 to-brand-accent/10 py-12 px-4">
       <div className="max-w-3xl mx-auto">
+        {waitingPayment && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md">
+              <CardContent className="pt-6 text-center">
+                <Loader2 className="h-12 w-12 animate-spin text-brand-primary mx-auto mb-4" />
+                <h2 className="text-2xl font-bold mb-2">Aguardando pagamento</h2>
+                <p className="text-muted-foreground">Finalize o pagamento na janela aberta. Atualizaremos automaticamente.</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
         <Card>
           <CardHeader>
             {/* Logo centralizada no topo */}

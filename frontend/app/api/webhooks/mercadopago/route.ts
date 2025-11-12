@@ -10,9 +10,74 @@ const supabase = createClient(
 // POST /api/webhooks/mercadopago - Webhook do Mercado Pago
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    
-    console.log('Mercado Pago webhook received:', body);
+    const rawBody = await request.text();
+    const signatureHeader = request.headers.get('x-mp-signature') || request.headers.get('x-signature') || '';
+    const requestId = request.headers.get('x-request-id') || request.headers.get('x-mp-request-id') || '';
+
+    let webhookSecret: string | null = null;
+    try {
+      const { data: cfg } = await supabase
+        .from('mercadopago_global_configs')
+        .select('webhook_secret, is_active')
+        .eq('scope', 'global')
+        .limit(1)
+        .maybeSingle();
+      webhookSecret = (cfg && cfg.is_active !== false && cfg.webhook_secret) ? cfg.webhook_secret : null;
+    } catch {}
+    if (!webhookSecret) webhookSecret = process.env.MP_WEBHOOK_SECRET || null;
+
+    if (webhookSecret) {
+      const safeEqual = (a: string, b: string) => {
+        if (a.length !== b.length) return false;
+        let r = 0;
+        for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+        return r === 0;
+      };
+
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey('raw', encoder.encode(webhookSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+
+      const parseSig = (h: string) => {
+        const out: Record<string, string> = {};
+        h.split(/[;,]/).forEach((part) => {
+          const [k, v] = part.split('=').map((s) => s.trim());
+          if (k && v) out[k] = v;
+        });
+        return out;
+      };
+
+      let verified = false;
+      if (signatureHeader) {
+        const fields = parseSig(signatureHeader);
+        const ts = fields.ts;
+        const v1 = fields.v1 || fields.sha256 || fields.signature || signatureHeader;
+        const maxAge = 10 * 60;
+        if (ts && Number.isFinite(Number(ts))) {
+          const now = Math.floor(Date.now() / 1000);
+          if (Math.abs(now - Number(ts)) <= maxAge) {
+            const hmacTs = await crypto.subtle.sign('HMAC', key, encoder.encode(`${ts}.${rawBody}`));
+            const hexTs = Array.from(new Uint8Array(hmacTs)).map((b) => b.toString(16).padStart(2, '0')).join('');
+            if (v1 && safeEqual(hexTs, v1)) verified = true;
+          }
+        }
+        if (!verified) {
+          const hmac = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody));
+          const hex = Array.from(new Uint8Array(hmac)).map((b) => b.toString(16).padStart(2, '0')).join('');
+          if (v1 && safeEqual(hex, v1)) verified = true;
+        }
+      }
+
+      if (!verified) {
+        return NextResponse.json({ error: 'unauthorized', request_id: requestId || null }, { status: 401 });
+      }
+    }
+
+    let body: any;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'invalid_payload' }, { status: 400 });
+    }
 
     // Mercado Pago envia tipo e ID do recurso
     const { type, data } = body;
