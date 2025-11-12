@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAccessTokenForTenant, getGlobalAccessToken } from '@/lib/mercadopago'
 
-export async function GET(_req: NextRequest, { params }: { params: { submission_id: string } }) {
+export async function GET(_req: Request, context: any) {
   try {
     const supabase = createAdminClient()
-    const submissionId = params.submission_id
+    const submissionId = context?.params?.submission_id as string
     if (!submissionId) {
       return NextResponse.json({ error: 'missing_submission_id' }, { status: 400 })
     }
@@ -76,4 +76,3 @@ export async function GET(_req: NextRequest, { params }: { params: { submission_
     return NextResponse.json({ error: e?.message || 'unexpected_error' }, { status: 500 })
   }
 }
-
