@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Eye, Trash2, Loader2, Search, Download, Filter, File as FileIcon, FileText, FileImage, FileSpreadsheet, Link as LinkIcon, Pencil } from 'lucide-react';
+import { Eye, Trash2, Loader2, Search, Download, Filter, File as FileIcon, FileText, FileImage, FileSpreadsheet, Link as LinkIcon, Pencil, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatDisplayLabel, formatDisplayValue, formatDisplayValueByKey, formatPhone } from '@/lib/utils';
 
@@ -63,6 +63,7 @@ export default function SubmissionsPage() {
   const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
   const [newPaymentStatus, setNewPaymentStatus] = useState<string>('PENDENTE');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<string>('');
 
   // Helpers locais para metadados de arquivo
   type FileMeta = { name: string; size?: number; type?: string; url?: string; storagePath?: string };
@@ -374,6 +375,26 @@ export default function SubmissionsPage() {
       toast.error('Erro ao deletar submissão');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleForceVerify = async (submission: Submission) => {
+    try {
+      setVerifyingId(submission.id);
+      const res = await fetch(`/api/payments/status/${submission.id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error || 'Falha ao verificar pagamento');
+        return;
+      }
+      const status: string = data?.status || submission.payment_status;
+      setSubmissions((prev) => prev.map((s) => s.id === submission.id ? { ...s, payment_status: status } : s));
+      setSelectedSubmission((prev) => prev && prev.id === submission.id ? { ...prev, payment_status: status } : prev);
+      toast.success(status === 'PAGO' ? 'Pagamento confirmado' : status === 'CANCELADO' ? 'Pagamento cancelado' : 'Pagamento pendente');
+    } catch (e) {
+      toast.error('Erro ao verificar pagamento');
+    } finally {
+      setVerifyingId('');
     }
   };
 
@@ -733,9 +754,24 @@ export default function SubmissionsPage() {
                           </TableCell>
                         )}
                         <TableCell>
-                          <Badge variant={getPaymentStatusColor(submission.payment_status)}>
-                            {getPaymentStatusLabel(submission.payment_status)}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={getPaymentStatusColor(submission.payment_status)}>
+                              {getPaymentStatusLabel(submission.payment_status)}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              title="Verificar status"
+                              onClick={() => handleForceVerify(submission)}
+                              disabled={verifyingId === submission.id}
+                            >
+                              {verifyingId === submission.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell>{formatDate(submission.created_at)}</TableCell>
                         <TableCell className="text-right space-x-2">
@@ -792,10 +828,23 @@ export default function SubmissionsPage() {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <Label className="text-muted-foreground">Status Pagamento</Label>
-                    <div className="mt-1">
+                    <div className="mt-1 flex items-center gap-2">
                       <Badge variant={getPaymentStatusColor(selectedSubmission.payment_status)}>
                         {getPaymentStatusLabel(selectedSubmission.payment_status)}
                       </Badge>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title="Verificar status"
+                        onClick={() => selectedSubmission && handleForceVerify(selectedSubmission)}
+                        disabled={!!selectedSubmission && verifyingId === selectedSubmission.id}
+                      >
+                        {selectedSubmission && verifyingId === selectedSubmission.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                   {selectedSubmission.payment_amount && (
