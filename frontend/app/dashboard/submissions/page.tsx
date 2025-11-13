@@ -252,6 +252,53 @@ export default function SubmissionsPage() {
     return '';
   };
 
+  const escapeHtml = (str: any) => String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const isUrlString = (s: any): s is string => typeof s === 'string' && /^https?:\/\//.test(s);
+  const extractStorageRel = (url: string) => {
+    const basePath = '/storage/v1/object/public/form-submissions/';
+    const idx = url.indexOf(basePath);
+    return idx >= 0 ? url.substring(idx + basePath.length) : '';
+  };
+  const buildPublicSignedHref = (storagePath: string) => `/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
+  const formatExportCellValue = (field: string, value: any) => {
+    if (isFileMeta(value)) {
+      const meta = value as FileMeta;
+      const label = meta.name || 'Documento';
+      if (meta.storagePath) {
+        const href = buildPublicSignedHref(meta.storagePath);
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+      }
+      if (meta.url && typeof meta.url === 'string') {
+        const rel = extractStorageRel(meta.url);
+        if (rel) {
+          const href = buildPublicSignedHref(rel);
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+        }
+        return `<a href="${escapeHtml(meta.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+      }
+      return escapeHtml(label);
+    }
+    if (Array.isArray(value)) {
+      const parts = value.map((v) => formatExportCellValue(field, v)).filter(Boolean);
+      return parts.join(' | ');
+    }
+    if (isUrlString(value)) {
+      const url = String(value);
+      const rel = extractStorageRel(url);
+      const fileName = (url.split('?')[0].split('/').pop() || 'Abrir documento');
+      if (rel) {
+        const href = buildPublicSignedHref(rel);
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(fileName)}</a>`;
+      }
+      return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(fileName)}</a>`;
+    }
+    return escapeHtml(formatDisplayValueByKey(field, value ?? ''));
+  };
+
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
@@ -455,11 +502,6 @@ export default function SubmissionsPage() {
       'Data Submissão',
     ];
 
-    const escapeHtml = (str: any) => String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
     const rowsHtml = submissions.map((sub) => {
       const nomeCompleto = findStudentName(sub.data);
       const whatsapp = findWhatsapp(sub.data);
@@ -467,16 +509,16 @@ export default function SubmissionsPage() {
         sub.tenants.name,
         sub.form_definitions.name,
         nomeCompleto,
-        whatsapp ? formatDisplayValueByKey('whatsapp', whatsapp) : '',
+        whatsapp ? escapeHtml(formatDisplayValueByKey('whatsapp', whatsapp)) : '',
         ...Array.from(allFields).map((field) => {
           const value = sub.data[field];
-          return formatDisplayValueByKey(field, value ?? '');
+          return formatExportCellValue(field, value ?? '');
         }),
         getPaymentStatusLabel(sub.payment_status),
-        sub.payment_amount != null ? sub.payment_amount : '',
-        formatDate(sub.created_at),
+        sub.payment_amount != null ? escapeHtml(sub.payment_amount) : '',
+        escapeHtml(formatDate(sub.created_at)),
       ];
-      return `<tr>${cells.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`;
+      return `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
     }).join('');
 
     const tableHtml = `
