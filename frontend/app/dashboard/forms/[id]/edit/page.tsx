@@ -25,6 +25,7 @@ import {
   fieldRequiresOptions,
   getDefaultPlaceholder 
 } from '@/lib/form-field-types';
+import { slugify } from '@/lib/utils';
 
 interface Tenant {
   id: string;
@@ -48,6 +49,9 @@ export default function EditFormPage() {
   const [requiresPayment, setRequiresPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [fields, setFields] = useState<FormField[]>([]);
+  const [formSlug, setFormSlug] = useState('');
+  const [slugChecking, setSlugChecking] = useState(false);
+  const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
 
   // Field being edited
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
@@ -82,6 +86,7 @@ export default function EditFormPage() {
         setFormDescription(form.description || '');
         setSelectedTenant(form.tenant_id || '');
         setIsActive(form.is_active);
+        setFormSlug(form.slug || '');
         // Ler configurações de pagamento do objeto settings
         const requirePayment = form.settings?.require_payment ?? false;
         const paymentAmt = form.settings?.payment_amount ?? null;
@@ -232,6 +237,14 @@ export default function EditFormPage() {
       return;
     }
 
+    if (!formSlug.trim()) {
+      toast.error('A URL (slug) é obrigatória');
+      return;
+    }
+    if (slugAvailable === false) {
+      toast.error('A URL informada já está em uso');
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -244,6 +257,7 @@ export default function EditFormPage() {
           // tenant_id opcional: somente enviar se houver seleção
           ...(selectedTenant ? { tenant_id: selectedTenant } : {}),
           is_active: isActive,
+          slug: formSlug,
           // Enviar configurações dentro de settings
           settings: {
             ...(requiresPayment ? { require_payment: true } : { require_payment: false }),
@@ -335,6 +349,33 @@ export default function EditFormPage() {
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">Deixe vazio para manter como formulário global.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="slug">URL (slug) *</Label>
+                <Input
+                  id="slug"
+                  value={formSlug}
+                  onChange={(e) => setFormSlug(slugify(e.target.value))}
+                  placeholder="ex: inscricao-2025-1"
+                  required
+                />
+              <p className="text-xs text-muted-foreground">
+                Use apenas letras, números e hífens. URL pública:
+                {' '}
+                <code className="bg-muted px-2 py-0.5 rounded">
+                  {`${typeof window !== 'undefined' ? window.location.origin : ''}${formSlug ? `/f/${formSlug}` : `/form/${formId}`}`}
+                </code>
+              </p>
+              {slugChecking ? (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Verificando disponibilidade...
+                </p>
+              ) : slugAvailable === false ? (
+                <p className="text-xs text-destructive">URL indisponível</p>
+              ) : slugAvailable === true ? (
+                <p className="text-xs text-green-600">URL disponível</p>
+              ) : null}
               </div>
 
               <div className="space-y-2">
@@ -545,7 +586,35 @@ export default function EditFormPage() {
                               newOptions[i] = {
                                 label,
                                 value: generateFieldName(label),
-                              };
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = window.setTimeout(() => {
+      if (!formSlug) {
+        setSlugAvailable(null);
+        return;
+      }
+      setSlugChecking(true);
+      const params = new URLSearchParams();
+      params.set('slug', formSlug);
+      params.set('exclude_id', formId);
+      if (selectedTenant) params.set('tenant_id', selectedTenant);
+      fetch(`/api/forms/check-slug?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((data) => {
+          setSlugAvailable(Boolean(data?.available));
+        })
+        .catch(() => {
+          setSlugAvailable(null);
+        })
+        .finally(() => setSlugChecking(false));
+    }, 300);
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [formSlug, selectedTenant, formId]);
                               setFieldEditorData({ ...fieldEditorData, options: newOptions });
                             }}
                             placeholder="Label da opção"

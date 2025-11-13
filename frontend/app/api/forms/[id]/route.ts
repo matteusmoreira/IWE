@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { slugify } from '@/lib/utils';
 
 // GET /api/forms/[id] - Buscar formulário por ID
 export async function GET(
@@ -86,22 +87,24 @@ export async function PATCH(
     }
 
     // Parse do body
-    const body = (await request.json()) as Record<string, unknown>;
-    const name: string | undefined =
-      (typeof body.name === 'string' ? body.name : undefined) ??
-      (typeof body.title === 'string' ? body.title : undefined);
-    const description = typeof body.description === 'string' ? body.description : undefined;
-    const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
-    const settings = typeof body.settings === 'object' && body.settings !== null
-      ? (body.settings as Record<string, unknown>)
+  const body = (await request.json()) as Record<string, unknown>;
+  const name: string | undefined =
+    (typeof body.name === 'string' ? body.name : undefined) ??
+    (typeof body.title === 'string' ? body.title : undefined);
+  const description = typeof body.description === 'string' ? body.description : undefined;
+  const is_active = typeof body.is_active === 'boolean' ? body.is_active : undefined;
+  const settings = typeof body.settings === 'object' && body.settings !== null
+    ? (body.settings as Record<string, unknown>)
+    : undefined;
+  const fields = Array.isArray(body.fields) ? body.fields : undefined;
+  const tenant_id =
+    typeof body.tenant_id === 'string' || typeof body.tenant_id === 'number'
+      ? (body.tenant_id as string | number)
+      : body.tenant_id === null
+      ? null
       : undefined;
-    const fields = Array.isArray(body.fields) ? body.fields : undefined;
-    const tenant_id =
-      typeof body.tenant_id === 'string' || typeof body.tenant_id === 'number'
-        ? (body.tenant_id as string | number)
-        : body.tenant_id === null
-        ? null
-        : undefined;
+  const rawSlug = typeof body.slug === 'string' ? body.slug : undefined;
+  const slug = rawSlug !== undefined ? slugify(rawSlug) : undefined;
 
     // Buscar form antigo para auditoria
     const { data: oldForm } = await supabase
@@ -124,6 +127,35 @@ export async function PATCH(
       }
     }
 
+    // Determinar tenant alvo (pode mudar para superadmin)
+    const targetTenantId =
+      userData.role === 'superadmin' && Object.prototype.hasOwnProperty.call(body, 'tenant_id')
+        ? tenant_id ?? null
+        : oldForm.tenant_id;
+
+    // Validar slug se fornecido
+    if (slug !== undefined) {
+      if (!slug) {
+        return NextResponse.json({ error: 'Slug é obrigatório' }, { status: 400 });
+      }
+      if (slug !== oldForm.slug) {
+        let existsQuery = supabase
+          .from('form_definitions')
+          .select('id')
+          .eq('slug', slug)
+          .neq('id', id);
+        if (targetTenantId) {
+          existsQuery = existsQuery.eq('tenant_id', targetTenantId);
+        } else {
+          existsQuery = existsQuery.is('tenant_id', null);
+        }
+        const { data: existing } = await existsQuery.limit(1);
+        if (existing && existing.length > 0) {
+          return NextResponse.json({ error: 'Slug já em uso' }, { status: 409 });
+        }
+      }
+    }
+
     // Atualizar formulário
     const { error: updateError } = await supabase
       .from('form_definitions')
@@ -132,6 +164,7 @@ export async function PATCH(
         ...(description !== undefined && { description }),
         ...(is_active !== undefined && { is_active }),
         ...(settings && { settings }),
+        ...(slug !== undefined && { slug }),
         // Permitir alterar tenant apenas para superadmin
         ...(userData.role === 'superadmin' && body.hasOwnProperty('tenant_id')
           ? { tenant_id: tenant_id ?? null }
@@ -193,7 +226,7 @@ export async function PATCH(
       resource_id: id,
       changes: {
         old: oldForm,
-        new: { name, description, is_active, settings, fields_count: fields?.length },
+        new: { name, description, is_active, settings, slug, fields_count: fields?.length },
       },
     });
 
