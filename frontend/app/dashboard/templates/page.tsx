@@ -176,6 +176,18 @@ export default function TemplatesPage() {
   async function onCreateTemplate() {
     const variables = extractVariables(newContent);
     try {
+      if (!newTitle.trim()) {
+        toast.error("Erro", { description: "Título é obrigatório" });
+        return;
+      }
+      if (!newContent.trim()) {
+        toast.error("Erro", { description: "Conteúdo é obrigatório" });
+        return;
+      }
+      if (!newKey) {
+        toast.error("Erro", { description: "Selecione o Disparo/Chave" });
+        return;
+      }
       const r = await fetch(`/api/templates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
