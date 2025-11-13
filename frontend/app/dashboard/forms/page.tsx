@@ -33,6 +33,7 @@ export default function FormsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingForm, setDeletingForm] = useState<Form | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchForms();
@@ -89,6 +90,27 @@ export default function FormsPage() {
     const url = form.slug ? `${base}/f/${form.slug}` : `${base}/form/${form.id}`;
     navigator.clipboard.writeText(url);
     toast.success('URL pública copiada!');
+  };
+
+  const handleDuplicate = async (form: Form) => {
+    setSubmitting(true);
+    setDuplicatingId(form.id);
+    try {
+      const response = await fetch(`/api/forms/${form.id}/duplicate`, { method: 'POST' });
+      const data = await response.json();
+      if (response.ok && data.form?.id) {
+        toast.success('Formulário duplicado com sucesso!');
+        router.push(`/dashboard/forms/${data.form.id}/edit`);
+      } else {
+        toast.error(data.error || 'Erro ao duplicar formulário');
+      }
+    } catch (error) {
+      console.error('Error duplicating form:', error);
+      toast.error('Erro ao duplicar formulário');
+    } finally {
+      setSubmitting(false);
+      setDuplicatingId(null);
+    }
   };
 
   if (loading) {
@@ -181,6 +203,19 @@ export default function FormsPage() {
                     </TableCell>
                     <TableCell>{formatDate(form.created_at)}</TableCell>
                     <TableCell className="text-right space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDuplicate(form)}
+                        title="Duplicar"
+                        disabled={duplicatingId === form.id}
+                      >
+                        {duplicatingId === form.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
