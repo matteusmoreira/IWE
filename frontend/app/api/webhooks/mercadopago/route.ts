@@ -155,70 +155,58 @@ type SubmissionRow = {
 
 async function processPaymentWebhook(paymentId: string, eventId?: string) {
   try {
-    // Buscar submission pelo payment_external_id
-    const { data: submission, error: submissionError } = await supabase
-      .from('submissions')
-      .select('*, tenants(*)')
-      .eq('payment_external_id', paymentId)
-      .single();
-
-    if (submissionError || !submission) {
-      console.error('Submission not found for payment:', paymentId);
-      
-      // Atualizar evento como falha
-      // Sem atualização de status pois a tabela não possui coluna de status
-      return;
-    }
-
-    // Token do tenant quando disponível; fallback para variável de ambiente
-    const { data: cfg } = await supabase
-      .from('mercadopago_configs')
-      .select('access_token, is_active')
-      .eq('tenant_id', submission.tenant_id)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const accessToken = (cfg && cfg.is_active !== false && cfg.access_token)
-      ? cfg.access_token
-      : (process.env.MP_ACCESS_TOKEN || '');
+    // Obter credenciais globais primeiro; fallback para variável de ambiente
+    let accessToken: string | null = null;
+    try {
+      const { data: globalCfg } = await supabase
+        .from('mercadopago_global_configs')
+        .select('access_token, is_active')
+        .eq('scope', 'global')
+        .limit(1)
+        .maybeSingle();
+      accessToken = (globalCfg && globalCfg.is_active !== false && globalCfg.access_token) ? globalCfg.access_token : null;
+    } catch {}
+    if (!accessToken) accessToken = process.env.MP_ACCESS_TOKEN || null;
 
     if (!accessToken || accessToken.trim() === '') {
-      console.error('Credenciais do Mercado Pago não configuradas para processamento de webhook');
-      if (eventId) {
-        await supabase
-          .from('payment_events')
-          .update({ error_message: 'Credenciais do Mercado Pago não configuradas' })
-          .eq('id', eventId);
-      }
+      console.error('Credenciais globais do Mercado Pago não configuradas');
       return;
     }
 
     // Buscar detalhes do pagamento na API do Mercado Pago
     const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
+      headers: { 'Authorization': `Bearer ${accessToken}` },
     });
-
     const payment = await paymentResponse.json();
-
     if (!paymentResponse.ok) {
       console.error('Error fetching payment from MP:', payment);
-      
-      // Sem atualização de status; apenas log em console
+      return;
+    }
+
+    // Localizar submissão pelo external_reference (submission_id)
+    const extRef = String(payment.external_reference || '').trim();
+    if (!extRef) {
+      console.error('Payment missing external_reference');
+      return;
+    }
+
+    const { data: submission, error: submissionError } = await supabase
+      .from('submissions')
+      .select('*, tenants(*)')
+      .eq('id', extRef)
+      .single();
+
+    if (submissionError || !submission) {
+      console.error('Submission not found for external_reference:', extRef);
       return;
     }
 
     // Mapear status do MP para nosso enum
     let paymentStatus = 'PENDENTE';
-    if (payment.status === 'approved') {
-      paymentStatus = 'PAGO';
-    } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
-      paymentStatus = 'CANCELADO';
-    }
+    if (payment.status === 'approved') paymentStatus = 'PAGO';
+    else if (payment.status === 'rejected' || payment.status === 'cancelled') paymentStatus = 'CANCELADO';
 
-    // Atualizar submission
+    // Atualizar submissão com dados do pagamento
     const { error: updateError } = await supabase
       .from('submissions')
       .update({
@@ -245,29 +233,23 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
     if (eventId) {
       await supabase
         .from('payment_events')
-        .update({ 
+        .update({
           submission_id: submission.id,
           processed_at: new Date().toISOString(),
         })
         .eq('id', eventId);
     }
 
-    // Se pagamento aprovado, disparar ações automáticas
+    // Pós-pagamento: enviar notificações se aprovado
     if (payment.status === 'approved') {
-      // 1. Enviar WhatsApp (se configurado)
       await sendWhatsAppNotification(submission as SubmissionRow);
-
-      // 2. Enviar para n8n/Moodle (se configurado)
       await sendToMoodle(submission as SubmissionRow);
-
-
     }
 
     console.log('Payment webhook processed successfully:', paymentId);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('Error in processPaymentWebhook:', message);
-    // Sem atualização de status na payment_events (schema atual não possui coluna de status)
   }
 }
 
