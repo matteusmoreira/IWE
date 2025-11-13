@@ -1,4 +1,5 @@
 import Link from 'next/link';
+export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
 import Logo from '@/components/ui/logo';
 import { Button } from '@/components/ui/button';

@@ -264,7 +264,7 @@ export default function SubmissionsPage() {
     return idx >= 0 ? url.substring(idx + basePath.length) : '';
   };
   const buildPublicSignedHref = (storagePath: string) => `/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
-  const formatExportCellValue = (field: string, value: any) => {
+  const formatExportCellValue = (field: string, value: any): string => {
     if (isFileMeta(value)) {
       const meta = value as FileMeta;
       const label = meta.name || 'Documento';

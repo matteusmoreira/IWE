@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { Suspense, useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
-export default function PagamentoPendentePage() {
+function PageContent() {
   const params = useSearchParams();
   const submissionId = params.get('submission_id');
   const [loading, setLoading] = useState(false);
@@ -53,5 +53,13 @@ export default function PagamentoPendentePage() {
       )}
       {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
     </div>
+  );
+}
+
+export default function PagamentoPendentePage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-xl p-4">Carregando...</div>}>
+      <PageContent />
+    </Suspense>
   );
 }
