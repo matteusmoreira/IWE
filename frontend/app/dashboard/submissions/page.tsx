@@ -49,6 +49,16 @@ interface Tenant {
   slug: string;
 }
 
+interface FormDef {
+  id: string;
+  name: string;
+  tenants?: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
+}
+
 export default function SubmissionsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [total, setTotal] = useState(0);
@@ -248,6 +258,8 @@ export default function SubmissionsPage() {
   const [role, setRole] = useState<'superadmin' | 'admin' | 'user' | ''>('');
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
+  const [forms, setForms] = useState<FormDef[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string>('');
 
   // Carregar dados do usuário e polos (apenas para superadmin)
   useEffect(() => {
@@ -271,11 +283,22 @@ export default function SubmissionsPage() {
 
   useEffect(() => {
     fetchSubmissions();
-  }, [searchTerm, paymentStatusFilter, selectedTenantId, page, limit]);
+  }, [searchTerm, paymentStatusFilter, selectedTenantId, selectedFormId, page, limit]);
 
   useEffect(() => {
     setPage(1);
   }, [searchTerm, paymentStatusFilter, selectedTenantId]);
+
+  useEffect(() => {
+    const loadForms = async () => {
+      try {
+        const res = await fetch('/api/forms');
+        const data = await res.json();
+        if (res.ok) setForms(data?.forms || []);
+      } catch {}
+    };
+    loadForms();
+  }, []);
 
   const fetchSubmissions = async () => {
     try {
@@ -285,6 +308,7 @@ export default function SubmissionsPage() {
       if (searchTerm) params.append('search', searchTerm);
       if (paymentStatusFilter) params.append('payment_status', paymentStatusFilter);
       if (selectedTenantId) params.append('tenant_id', selectedTenantId);
+      if (selectedFormId) params.append('form_id', selectedFormId);
       // Evitar retorno em cache e garantir atualização pós-exclusão
       params.append('_ts', String(Date.now()));
       params.append('limit', String(limit));
@@ -534,7 +558,7 @@ export default function SubmissionsPage() {
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Buscar</Label>
               <div className="relative">
@@ -580,6 +604,20 @@ export default function SubmissionsPage() {
             )}
 
             <div className="space-y-2">
+              <Label>Formulário</Label>
+              <select
+                value={selectedFormId}
+                onChange={(e) => setSelectedFormId(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-md"
+              >
+                <option value="">Todos</option>
+                {forms.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
               <Label>Coluna Documento</Label>
               <div className="flex items-center gap-2 text-sm">
                 <input
@@ -599,6 +637,7 @@ export default function SubmissionsPage() {
                   setSearchTerm('');
                   setPaymentStatusFilter('');
                   setSelectedTenantId('');
+                  setSelectedFormId('');
                 }}
               >
                 Limpar Filtros
