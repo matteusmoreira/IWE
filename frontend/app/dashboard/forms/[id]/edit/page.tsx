@@ -14,7 +14,6 @@ import {
   Loader2, 
   Save, 
   ArrowLeft,
-  Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -61,6 +60,34 @@ export default function EditFormPage() {
     Promise.all([fetchTenants(), fetchForm()]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = window.setTimeout(() => {
+      if (!formSlug) {
+        setSlugAvailable(null);
+        return;
+      }
+      setSlugChecking(true);
+      const params = new URLSearchParams();
+      params.set('slug', formSlug);
+      params.set('exclude_id', formId);
+      if (selectedTenant) params.set('tenant_id', selectedTenant);
+      fetch(`/api/forms/check-slug?${params.toString()}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((data) => {
+          setSlugAvailable(Boolean(data?.available));
+        })
+        .catch(() => {
+          setSlugAvailable(null);
+        })
+        .finally(() => setSlugChecking(false));
+    }, 300);
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [formSlug, selectedTenant, formId]);
 
   const fetchTenants = async () => {
     try {
@@ -586,35 +613,7 @@ export default function EditFormPage() {
                               newOptions[i] = {
                                 label,
                                 value: generateFieldName(label),
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const t = window.setTimeout(() => {
-      if (!formSlug) {
-        setSlugAvailable(null);
-        return;
-      }
-      setSlugChecking(true);
-      const params = new URLSearchParams();
-      params.set('slug', formSlug);
-      params.set('exclude_id', formId);
-      if (selectedTenant) params.set('tenant_id', selectedTenant);
-      fetch(`/api/forms/check-slug?${params.toString()}`, { signal: controller.signal })
-        .then((res) => res.json())
-        .then((data) => {
-          setSlugAvailable(Boolean(data?.available));
-        })
-        .catch(() => {
-          setSlugAvailable(null);
-        })
-        .finally(() => setSlugChecking(false));
-    }, 300);
-    return () => {
-      controller.abort();
-      clearTimeout(t);
-    };
-  }, [formSlug, selectedTenant, formId]);
+                              };
                               setFieldEditorData({ ...fieldEditorData, options: newOptions });
                             }}
                             placeholder="Label da opção"
