@@ -260,8 +260,7 @@ async function processPaymentWebhook(paymentId: string, eventId?: string) {
       // 2. Enviar para n8n/Moodle (se configurado)
       await sendToMoodle(submission as SubmissionRow);
 
-      // 3. Enviar E-mail (Resend), se configurado
-      await sendEmailNotification(submission as SubmissionRow);
+
     }
 
     console.log('Payment webhook processed successfully:', paymentId);

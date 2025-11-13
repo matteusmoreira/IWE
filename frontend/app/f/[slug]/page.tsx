@@ -40,6 +40,7 @@ export default function PublicFormBySlugPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [tenants, setTenants] = useState<{ id: string; name: string; slug?: string }[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   // Carrega o formulário pelo slug. Mantemos como useCallback para estabilidade da referência.
   const fetchForm = useCallback(async () => {
@@ -220,12 +221,13 @@ export default function PublicFormBySlugPage() {
       const data = await response.json();
 
       if (response.ok) {
-        if (data.requires_payment) {
-          const paymentResponse = await fetch('/api/payments/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ submission_id: data.submission_id }),
-          });
+          if (data.requires_payment) {
+            setSubmissionId(String(data.submission_id));
+            const paymentResponse = await fetch('/api/payments/create-preference', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ submission_id: data.submission_id }),
+            });
           const paymentData = await paymentResponse.json();
           if (paymentResponse.ok && paymentData.init_point) {
             window.location.href = paymentData.init_point;
@@ -782,6 +784,29 @@ export default function PublicFormBySlugPage() {
                   Enviar Formulário
                 </Button>
               </div>
+              {submissionId && (
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    className="w-full bg-red-600 text-black animate-pulse hover:bg-red-700 font-bold"
+                    onClick={async () => {
+                      try {
+                        const paymentResponse = await fetch('/api/payments/create-preference', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ submission_id: submissionId }),
+                        });
+                        const paymentData = await paymentResponse.json();
+                        if (paymentResponse.ok && paymentData.init_point) {
+                          window.location.href = paymentData.init_point;
+                        }
+                      } catch {}
+                    }}
+                  >
+                    Retomar pagamento
+                  </Button>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>

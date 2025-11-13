@@ -249,8 +249,9 @@ export async function POST(request: Request) {
       // Se também houver nome, exige ambos para reduzir falso-positivo em casos raros.
       let dupQuery = admin
         .from('submissions')
-        .select('id')
+        .select('id, payment_status, created_at')
         .eq(`data->>${cpfField}`, cpfValueRaw)
+        .order('created_at', { ascending: false })
         .limit(1);
 
       if (nameValueRaw) {
@@ -262,10 +263,13 @@ export async function POST(request: Request) {
         console.error('Erro ao verificar duplicidade:', dupError);
         // Prossegue sem bloquear se houver erro de verificação
       } else if (dup && dup.length > 0) {
-        return NextResponse.json(
-          { error: 'Aluno já cadastrado no sistema!' },
-          { status: 409 }
-        );
+        const last = dup[0] as { id: string; payment_status?: string };
+        if (last.payment_status && last.payment_status !== 'PENDENTE') {
+          return NextResponse.json(
+            { error: 'Aluno já cadastrado no sistema!' },
+            { status: 409 }
+          );
+        }
       }
     }
 

@@ -32,6 +32,7 @@ export default function PublicFormPage() {
   const [tenants, setTenants] = useState<{ id: string; name: string; slug?: string }[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<string>('');
   const [waitingPayment, setWaitingPayment] = useState(false);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
   const pollPaymentStatus = useCallback((id: string) => {
     let active = true;
     const check = async () => {
@@ -54,6 +55,33 @@ export default function PublicFormPage() {
     check();
     return () => { active = false; };
   }, []);
+
+  const retryPayment = async () => {
+    if (!submissionId) return;
+    try {
+      const paymentResponse = await fetch('/api/payments/create-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission_id: submissionId }),
+      });
+      const paymentData = await paymentResponse.json();
+      if (paymentResponse.ok && paymentData.init_point) {
+        window.open(paymentData.init_point, '_blank');
+        setWaitingPayment(true);
+        pollPaymentStatus(String(submissionId));
+      } else {
+        const base = paymentData?.error || 'Erro ao processar pagamento. Tente novamente.';
+        const reason = paymentData?.reason ? ` (${paymentData.reason})` : '';
+        const detail = paymentData?.detail ? `: ${paymentData.detail}` : '';
+        const meta = paymentData?.meta?.blocked_by || paymentData?.meta?.code
+          ? ` [${[paymentData?.meta?.code, paymentData?.meta?.blocked_by].filter(Boolean).join(' - ')}]`
+          : '';
+        setError(`${base}${reason}${detail}${meta}`);
+      }
+    } catch {
+      setError('Erro ao processar pagamento. Tente novamente.');
+    }
+  };
 
   // Efeito de carregamento do formulário é definido após a função fetchForm
 
@@ -257,7 +285,7 @@ export default function PublicFormPage() {
       if (response.ok) {
         // Se requer pagamento, criar preferência e redirecionar
         if (data.requires_payment) {
-          // Criar preferência de pagamento
+          setSubmissionId(String(data.submission_id));
           const paymentResponse = await fetch('/api/payments/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -799,6 +827,17 @@ export default function PublicFormPage() {
                   Enviar Formulário
                 </Button>
               </div>
+              {submissionId && (
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    onClick={retryPayment}
+                    className="w-full bg-red-600 text-black animate-pulse hover:bg-red-700 font-bold"
+                  >
+                    Retomar pagamento
+                  </Button>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
