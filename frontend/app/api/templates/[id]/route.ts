@@ -20,6 +20,7 @@ export async function PATCH(
   const message_template = body.message_template ?? body.content;
   const trigger_event = body.trigger_event ?? body.key;
   const is_active = body.is_active;
+  const form_definition_id = body.form_definition_id ?? body.formDefinitionId;
 
   // Verificar se o template existe e se o admin tem permissão (tabela message_templates)
   const { data: existingTemplate, error: fetchError } = await supabase
@@ -61,13 +62,14 @@ export async function PATCH(
     updateData.variables = variables;
   }
   if (trigger_event !== undefined) updateData.key = trigger_event;
+  if (form_definition_id !== undefined) updateData.form_definition_id = form_definition_id || null;
   if (is_active !== undefined) updateData.is_active = is_active;
 
   const { data: templateRow, error } = await supabase
     .from('message_templates')
     .update(updateData)
     .eq('id', id)
-    .select('id, tenant_id, key, title, content, variables, is_active, created_at')
+    .select('id, tenant_id, key, title, content, variables, is_active, created_at, form_definition_id')
     .single();
 
   if (error) {
@@ -95,6 +97,7 @@ export async function PATCH(
     variables: templateRow.variables ?? [],
     is_active: !!templateRow.is_active,
     created_at: templateRow.created_at,
+    form_definition_id: templateRow.form_definition_id,
   } });
 }
 

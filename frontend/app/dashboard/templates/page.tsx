@@ -26,6 +26,7 @@ type Template = {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+  form_definition_id?: string | null;
 };
 
 const PRESET_KEYS = [
@@ -71,8 +72,15 @@ export default function TemplatesPage() {
   }, [templates, filterOnlyPayment]);
 
   const keyAlreadyExists = useMemo(() => {
-    return templates.some((t) => t.key === newKey);
-  }, [templates, newKey]);
+    return templates.some((t) => t.key === newKey && String(t.form_definition_id || '') === String(selectedFormId || ''));
+  }, [templates, newKey, selectedFormId]);
+
+  function formLabelById(fid?: string | null): string {
+    if (!fid) return 'Global (sem formulário)';
+    const f = forms.find((x: any) => String(x.id) === String(fid));
+    if (!f) return 'Desconhecido';
+    return `${f.name}${f.tenants?.name ? ` (${f.tenants.name})` : ''}`;
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -92,6 +100,7 @@ export default function TemplatesPage() {
           variables: t.variables ?? [],
           is_active: !!t.is_active,
           created_at: t.created_at,
+          form_definition_id: t.form_definition_id ?? null,
         }));
         setTemplates(mapped);
       })
@@ -176,6 +185,7 @@ export default function TemplatesPage() {
           message_template: newContent,
           is_active: newActive,
           variables,
+          form_definition_id: selectedFormId || null,
         }),
       });
       if (!r.ok) {
@@ -201,6 +211,7 @@ export default function TemplatesPage() {
         variables: t.variables ?? [],
         is_active: !!t.is_active,
         created_at: t.created_at,
+        form_definition_id: t.form_definition_id ?? null,
       })));
     } catch (err: any) {
       console.error("Erro ao criar template", err);
@@ -217,6 +228,7 @@ export default function TemplatesPage() {
         key: t.key,
         is_active: t.is_active,
         content: t.content,
+        form_definition_id: t.form_definition_id ?? null,
       },
     }));
   }
@@ -240,6 +252,7 @@ export default function TemplatesPage() {
           content,
           is_active: changes.is_active ?? t.is_active,
           variables,
+          form_definition_id: (changes.form_definition_id === '' ? null : (changes.form_definition_id ?? t.form_definition_id ?? null)),
         }),
       });
       if (!r.ok) throw new Error(await r.text());
@@ -257,6 +270,7 @@ export default function TemplatesPage() {
         variables: t.variables ?? [],
         is_active: !!t.is_active,
         created_at: t.created_at,
+        form_definition_id: t.form_definition_id ?? null,
       })));
       cancelEdit(t.id);
     } catch (err: any) {
@@ -284,6 +298,7 @@ export default function TemplatesPage() {
         variables: t.variables ?? [],
         is_active: !!t.is_active,
         created_at: t.created_at,
+        form_definition_id: t.form_definition_id ?? null,
       })));
     } catch (err: any) {
       console.error("Erro ao excluir template", err);
@@ -381,7 +396,7 @@ export default function TemplatesPage() {
             <div>
               <Button onClick={onCreateTemplate} disabled={keyAlreadyExists}>Criar template</Button>
               {keyAlreadyExists && (
-                <p className="text-xs text-red-600 mt-1">Já existe um template global com essa chave. Edite o existente ou escolha outra chave.</p>
+                <p className="text-xs text-red-600 mt-1">Já existe um template global com essa chave para o formulário selecionado.</p>
               )}
             </div>
           </div>
@@ -408,6 +423,7 @@ export default function TemplatesPage() {
                         <p className="text-xs text-muted-foreground">Chave: {t.key}</p>
                         <p className="text-xs text-muted-foreground">Ativo: {t.is_active ? "Sim" : "Não"}</p>
                         <p className="text-xs text-muted-foreground">Placeholders: {t.variables?.join(", ") || "-"}</p>
+                        <p className="text-xs text-muted-foreground">Formulário: {formLabelById(t.form_definition_id)}</p>
                       </div>
                       <div className="md:col-span-3">
                         <pre className="text-sm whitespace-pre-wrap">{t.content}</pre>
@@ -445,6 +461,19 @@ export default function TemplatesPage() {
                             onCheckedChange={(v) => setEditState((prev) => ({ ...prev, [t.id]: { ...prev[t.id], is_active: v } }))}
                           />
                           <Label>Ativo</Label>
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label>Formulário associado</Label>
+                          <Select
+                            value={String((editState[t.id]?.form_definition_id ?? t.form_definition_id) ?? '')}
+                            onChange={(e) => setEditState((prev) => ({ ...prev, [t.id]: { ...prev[t.id], form_definition_id: e.target.value } }))}
+                            className="mt-1"
+                          >
+                            <option value="">Global (sem formulário)</option>
+                            {forms.map((f: any) => (
+                              <option key={f.id} value={f.id}>{f.name} {f.tenants?.name ? `(${f.tenants.name})` : '(Global)'}</option>
+                            ))}
+                          </Select>
                         </div>
                         <div className="md:col-span-2">
                           <Label>Conteúdo</Label>

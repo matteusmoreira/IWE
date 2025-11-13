@@ -24,7 +24,7 @@ export async function GET() {
   // Buscar templates globais (tenant_id IS NULL)
   const { data: mtData, error } = await supabase
     .from('message_templates')
-    .select('id, tenant_id, key, title, content, variables, is_active, created_at')
+    .select('id, tenant_id, key, title, content, variables, is_active, created_at, form_definition_id')
     .is('tenant_id', null)
     .order('created_at', { ascending: false });
 
@@ -43,6 +43,7 @@ export async function GET() {
     variables: t.variables ?? [],
     is_active: !!t.is_active,
     created_at: t.created_at,
+    form_definition_id: t.form_definition_id,
   }));
 
   return NextResponse.json({ templates });
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
   const message_template = body.message_template ?? body.content;
   const trigger_event = body.trigger_event ?? body.key;
   const is_active = body.is_active;
+  const form_definition_id = body.form_definition_id ?? body.formDefinitionId ?? null;
 
   if (!name || !message_template || !trigger_event) {
     return NextResponse.json(
@@ -94,14 +96,15 @@ export async function POST(request: Request) {
   const variables = Array.from((message_template as string).matchAll(/\{\{(\w+)\}\}/g)).map(m => m[1]);
 
   // Evitar duplicidade de chave global
-  const { data: existingByKey } = await supabase
+  const { data: existingByKeyAndForm } = await supabase
     .from('message_templates')
     .select('id')
     .is('tenant_id', null)
     .eq('key', trigger_event)
+    .eq('form_definition_id', form_definition_id)
     .maybeSingle();
-  if (existingByKey) {
-    return NextResponse.json({ error: 'Já existe um template global com essa chave. Edite o existente ou escolha outra chave.' }, { status: 409 });
+  if (existingByKeyAndForm) {
+    return NextResponse.json({ error: 'Já existe um template global com essa chave para este formulário.' }, { status: 409 });
   }
   const { data: templateRow, error } = await supabase
     .from('message_templates')
@@ -112,8 +115,9 @@ export async function POST(request: Request) {
       content: message_template,
       variables,
       is_active: is_active !== false,
+      form_definition_id,
     })
-    .select('id, tenant_id, key, title, content, variables, is_active, created_at')
+    .select('id, tenant_id, key, title, content, variables, is_active, created_at, form_definition_id')
     .single();
 
   if (error) {
@@ -141,5 +145,6 @@ export async function POST(request: Request) {
     variables: templateRow.variables ?? [],
     is_active: !!templateRow.is_active,
     created_at: templateRow.created_at,
+    form_definition_id: templateRow.form_definition_id,
   } });
 }

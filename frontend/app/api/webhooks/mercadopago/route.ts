@@ -272,13 +272,25 @@ async function sendWhatsAppNotification(submission: SubmissionRow) {
 
     // Buscar template de confirmação de pagamento
     // Usa a tabela message_templates com chave 'payment_approved' conforme seeds
-    const { data: template } = await supabase
+    let { data: template } = await supabase
       .from('message_templates')
       .select('*')
       .is('tenant_id', null)
       .eq('key', 'payment_approved')
+      .eq('form_definition_id', submission.form_definition_id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
+    if (!template) {
+      const { data: fallback } = await supabase
+        .from('message_templates')
+        .select('*')
+        .is('tenant_id', null)
+        .eq('key', 'payment_approved')
+        .is('form_definition_id', null)
+        .eq('is_active', true)
+        .maybeSingle();
+      template = fallback || null;
+    }
 
     if (!template) {
       console.log('No payment confirmation template found');

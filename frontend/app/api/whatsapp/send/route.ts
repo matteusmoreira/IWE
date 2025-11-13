@@ -32,8 +32,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body: SendWhatsAppBody = await request.json();
-    const { tenant_id, to, template_key, message, variables = {}, submission_id } = body;
+  const body: SendWhatsAppBody = await request.json();
+  const { tenant_id, to, template_key, message, variables = {}, submission_id } = body;
+  const form_definition_id = (body as any).form_definition_id ?? null;
 
     if (!tenant_id) {
       return NextResponse.json({ error: 'tenant_id é obrigatório' }, { status: 400 });
@@ -77,13 +78,25 @@ export async function POST(request: Request) {
     let content = message || '';
     let templateId: string | null = null;
     if (template_key) {
-      const { data: template } = await supabase
+      let { data: template } = await supabase
         .from('message_templates')
         .select('*')
         .is('tenant_id', null)
         .eq('key', template_key)
+        .eq('form_definition_id', form_definition_id)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
+      if (!template) {
+        const { data: fallback } = await supabase
+          .from('message_templates')
+          .select('*')
+          .is('tenant_id', null)
+          .eq('key', template_key)
+          .is('form_definition_id', null)
+          .eq('is_active', true)
+          .maybeSingle();
+        template = fallback || null;
+      }
       if (!template) {
         return NextResponse.json({ error: 'Template global não encontrado' }, { status: 404 });
       }
