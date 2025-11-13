@@ -148,6 +148,7 @@ type SubmissionRow = {
   tenant_id: string;
   tenants?: { name?: string } | null;
   tenant_name?: string | null;
+  form_definition_id: string;
   data: Record<string, unknown>;
   payment_amount?: number | null;
   payment_date?: string | null;
