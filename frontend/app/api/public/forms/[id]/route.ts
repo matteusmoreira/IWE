@@ -1,15 +1,25 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // Preferimos Service Role para evitar bloqueios de RLS na leitura pública de formulários
 const admin = createAdminClient();
 
 // GET /api/public/forms/[id] - Buscar formulário público (sem autenticação)
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Rate limiting para proteção contra abuso
+    const rateLimit = checkRateLimit(request);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Muitas requisições. Tente novamente mais tarde.' },
+        { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
+      );
+    }
+    
     const { id } = await context.params;
     // Buscar formulário
     const { data: form, error } = await admin

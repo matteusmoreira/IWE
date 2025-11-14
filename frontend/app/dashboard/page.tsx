@@ -53,7 +53,8 @@ export default function DashboardPage() {
         setTenants(data.tenants || []);
       }
     } catch (error) {
-      console.error('Error fetching tenants:', error);
+      // Silencioso em produção para não expor detalhes
+      toast.error('Erro ao carregar polos');
     }
   };
 
@@ -74,7 +75,7 @@ export default function DashboardPage() {
         toast.error(data.error || 'Erro ao carregar métricas');
       }
     } catch (error) {
-      console.error('Error fetching metrics:', error);
+      // Silencioso em produção para não expor detalhes
       toast.error('Erro ao carregar métricas');
     } finally {
       setLoading(false);

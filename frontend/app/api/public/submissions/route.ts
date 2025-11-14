@@ -1,15 +1,31 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { checkRateLimit } from '@/lib/rate-limit';
+import { validateFormData } from '@/lib/validation';
 
 // Cliente público do Supabase removido (não utilizado neste endpoint)
 
 // POST /api/public/submissions - Criar nova submissão (público)
 export async function POST(request: Request) {
   try {
+    // Rate limiting para proteção contra spam
+    const rateLimit = checkRateLimit(request);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Muitas requisições. Tente novamente mais tarde.' },
+        { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
+      );
+    }
+    
     const body = (await request.json()) as Record<string, unknown>;
+    
+    // Validar e sanitizar dados de entrada
     const form_id = (typeof body.form_id === 'string' || typeof body.form_id === 'number') ? body.form_id : null;
-    const formData = (typeof body.data === 'object' && body.data !== null) ? (body.data as Record<string, unknown>) : null;
+    const rawFormData = (typeof body.data === 'object' && body.data !== null) ? (body.data as Record<string, unknown>) : null;
     const tenant_id = (typeof body.tenant_id === 'string' || typeof body.tenant_id === 'number') ? body.tenant_id : null;
+    
+    // Sanitizar dados do formulário
+    const formData = rawFormData ? validateFormData(rawFormData) : null;
 
     if (!form_id || !formData) {
       return NextResponse.json(
