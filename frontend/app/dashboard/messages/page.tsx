@@ -41,6 +41,7 @@ export default function MessagesPage() {
   const [processing, setProcessing] = useState<boolean>(false);
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [loadingSubmissions, setLoadingSubmissions] = useState<boolean>(false);
+  const [role, setRole] = useState<'superadmin' | 'admin' | 'user' | ''>('');
 
   // Helpers para extrair valores por chaves exatas ou por substring
   const getValueByKeys = (keys: string[], data: Record<string, unknown>) => {
@@ -81,7 +82,19 @@ export default function MessagesPage() {
   }, []);
 
   useEffect(() => {
-    // Carregar templates globais (apenas admin/superadmin)
+    const controller = new AbortController();
+    fetch('/api/users/me', { signal: controller.signal })
+      .then(r => r.json())
+      .then(payload => {
+        const r = String(payload?.user?.role || '').toLowerCase();
+        if (r === 'superadmin' || r === 'admin' || r === 'user') setRole(r as any);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (role !== 'superadmin') { setTemplates([]); return; }
     const controller = new AbortController();
     fetch(`/api/templates`, { signal: controller.signal })
       .then(async (res) => {
@@ -103,7 +116,7 @@ export default function MessagesPage() {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, []);
+  }, [role]);
 
   // Debounce da busca para evitar excesso de requisições
   useEffect(() => {
@@ -473,22 +486,24 @@ export default function MessagesPage() {
 
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Template (opcional)</Label>
-            <Select
-              value={selectedTemplate}
-              onChange={(e) => setSelectedTemplate(e.target.value)}
-              className="mt-1"
-            >
-              <option value="">Selecione</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.key}>{t.title}</option>
-              ))}
-            </Select>
-            <div className="mt-2">
-              <a href="/dashboard/templates" className="text-xs text-blue-600 underline">Gerenciar Templates</a>
+          {role === 'superadmin' && (
+            <div>
+              <Label>Template (opcional)</Label>
+              <Select
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+                className="mt-1"
+              >
+                <option value="">Selecione</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.key}>{t.title}</option>
+                ))}
+              </Select>
+              <div className="mt-2">
+                <a href="/dashboard/templates" className="text-xs text-blue-600 underline">Gerenciar Templates</a>
+              </div>
             </div>
-          </div>
+          )}
 
           {channel === "email" && (
             <div>

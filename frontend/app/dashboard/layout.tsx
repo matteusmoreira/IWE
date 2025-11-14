@@ -55,9 +55,9 @@ export default async function DashboardLayout({
     { label: 'Polos', href: '/dashboard/tenants', icon: 'users' },
     { label: 'Alunos', href: '/dashboard/submissions', icon: 'users' },
     { label: 'Mensagens', href: '/dashboard/messages', icon: 'messageCircle' },
-    { label: 'Templates', href: '/dashboard/templates', icon: 'fileText' },
   ]
   if (userRow?.role === 'superadmin') {
+    menuItems.push({ label: 'Templates', href: '/dashboard/templates', icon: 'fileText' })
     menuItems.push({ label: 'Admins', href: '/dashboard/admins', icon: 'shield' })
     menuItems.push({ label: 'Formulários', href: '/dashboard/forms', icon: 'fileText' })
     menuItems.push({ label: 'Configurações', href: '/dashboard/settings', icon: 'settings' })
