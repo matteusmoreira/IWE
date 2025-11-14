@@ -264,18 +264,35 @@ export default function SubmissionsPage() {
     return idx >= 0 ? url.substring(idx + basePath.length) : '';
   };
   const buildPublicSignedHref = (storagePath: string) => `/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}`;
-  const formatExportCellValue = (field: string, value: any): string => {
+  const resolveSignedUrl = async (storagePath: string): Promise<string | null> => {
+    try {
+      const resAuth = await fetch(`/api/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
+      if (resAuth.ok) {
+        const j = await resAuth.json();
+        if (j?.signedUrl) return j.signedUrl as string;
+      }
+    } catch {}
+    try {
+      const resPublic = await fetch(`/api/public/upload/signed-url?path=${encodeURIComponent(storagePath)}&format=json`);
+      if (resPublic.ok) {
+        const j = await resPublic.json();
+        if (j?.signedUrl) return j.signedUrl as string;
+      }
+    } catch {}
+    return null;
+  };
+  const formatExportCellValueWithSigned = (field: string, value: any, signed: Map<string, string>): string => {
     if (isFileMeta(value)) {
       const meta = value as FileMeta;
       const label = meta.name || 'Documento';
       if (meta.storagePath) {
-        const href = buildPublicSignedHref(meta.storagePath);
+        const href = signed.get(meta.storagePath) || buildPublicSignedHref(meta.storagePath);
         return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
       }
       if (meta.url && typeof meta.url === 'string') {
         const rel = extractStorageRel(meta.url);
         if (rel) {
-          const href = buildPublicSignedHref(rel);
+          const href = signed.get(rel) || buildPublicSignedHref(rel);
           return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
         }
         return `<a href="${escapeHtml(meta.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
@@ -283,7 +300,7 @@ export default function SubmissionsPage() {
       return escapeHtml(label);
     }
     if (Array.isArray(value)) {
-      const parts = value.map((v) => formatExportCellValue(field, v)).filter(Boolean);
+      const parts = value.map((v) => formatExportCellValueWithSigned(field, v, signed)).filter(Boolean);
       return parts.join(' | ');
     }
     if (isUrlString(value)) {
@@ -291,7 +308,7 @@ export default function SubmissionsPage() {
       const rel = extractStorageRel(url);
       const fileName = (url.split('?')[0].split('/').pop() || 'Abrir documento');
       if (rel) {
-        const href = buildPublicSignedHref(rel);
+        const href = signed.get(rel) || buildPublicSignedHref(rel);
         return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(fileName)}</a>`;
       }
       return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(fileName)}</a>`;
@@ -478,7 +495,7 @@ export default function SubmissionsPage() {
     }
   };
 
-  const exportToXLS = () => {
+  const exportToXLS = async () => {
     if (submissions.length === 0) {
       toast.error('Nenhuma submissão para exportar');
       return;
@@ -489,6 +506,32 @@ export default function SubmissionsPage() {
     submissions.forEach((sub) => {
       Object.keys(sub.data).forEach((key) => allFields.add(key));
     });
+
+    const storagePaths = new Set<string>();
+    const collectPaths = (v: any) => {
+      if (isFileMeta(v)) {
+        const m = v as FileMeta;
+        if (m.storagePath) storagePaths.add(m.storagePath);
+        if (m.url && typeof m.url === 'string') {
+          const rel = extractStorageRel(m.url);
+          if (rel) storagePaths.add(rel);
+        }
+        return;
+      }
+      if (Array.isArray(v)) v.forEach((x) => collectPaths(x));
+      if (isUrlString(v)) {
+        const rel = extractStorageRel(String(v));
+        if (rel) storagePaths.add(rel);
+      }
+    };
+    submissions.forEach((s) => {
+      Object.values(s.data).forEach((v) => collectPaths(v));
+    });
+    const signedMap = new Map<string, string>();
+    await Promise.all(Array.from(storagePaths).map(async (p) => {
+      const u = await resolveSignedUrl(p);
+      if (u) signedMap.set(p, u);
+    }));
 
     // Cabeçalhos da planilha (sem coluna de ID)
     const headers = [
@@ -512,7 +555,7 @@ export default function SubmissionsPage() {
         whatsapp ? escapeHtml(formatDisplayValueByKey('whatsapp', whatsapp)) : '',
         ...Array.from(allFields).map((field) => {
           const value = sub.data[field];
-          return formatExportCellValue(field, value ?? '');
+          return formatExportCellValueWithSigned(field, value ?? '', signedMap);
         }),
         getPaymentStatusLabel(sub.payment_status),
         sub.payment_amount != null ? escapeHtml(sub.payment_amount) : '',

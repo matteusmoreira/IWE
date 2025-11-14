@@ -283,9 +283,9 @@ export default function PublicFormPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Se requer pagamento, criar preferência e redirecionar
         if (data.requires_payment) {
           setSubmissionId(String(data.submission_id));
+          const preTab = window.open('', '_blank');
           const paymentResponse = await fetch('/api/payments/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -297,7 +297,11 @@ export default function PublicFormPage() {
           const paymentData = await paymentResponse.json();
 
           if (paymentResponse.ok && paymentData.init_point) {
-            window.open(paymentData.init_point, '_blank');
+            if (preTab) {
+              preTab.location.href = paymentData.init_point;
+            } else {
+              window.open(paymentData.init_point, '_blank');
+            }
             setWaitingPayment(true);
             pollPaymentStatus(String(data.submission_id));
             return;
@@ -320,8 +324,8 @@ export default function PublicFormPage() {
             return;
           }
         }
-
-        // Sucesso sem pagamento
+        
+        
         setSubmitted(true);
 
         if (data.redirect_url) {
