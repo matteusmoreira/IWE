@@ -139,7 +139,16 @@ export async function POST(request: Request) {
     const requiredFields = fields.filter((f) => Boolean(f.required));
     const missingFields = requiredFields.filter((f) => {
       const fname = String(f.name ?? '').trim();
-      const val = formData ? formData[fname] : undefined;
+      const type = String(f.type ?? '').toLowerCase();
+      const val = formData ? (formData as Record<string, unknown>)[fname] : undefined;
+      if (type === 'file') {
+        if (!val || typeof val !== 'object' || Array.isArray(val)) return true;
+        const v = val as Record<string, unknown>;
+        const hasUrl = typeof v.url === 'string' && v.url.trim() !== '';
+        const hasStorage = typeof v.storagePath === 'string' && v.storagePath.trim() !== '';
+        const hasName = typeof v.name === 'string' && v.name.trim() !== '';
+        return !(hasName && (hasUrl || hasStorage));
+      }
       return val === undefined || val === null || String(val) === '';
     });
 

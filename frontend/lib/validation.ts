@@ -45,8 +45,27 @@ export function validateFormData(data: Record<string, unknown>): Record<string, 
         typeof item === 'string' ? sanitizeInput(item) : item
       );
     } else {
-      // Remove objetos complexos não esperados
-      sanitized[key] = null;
+      // Permitir objetos simples usados por campos de arquivo
+      const isPlainObject = Object.prototype.toString.call(value) === '[object Object]';
+      if (isPlainObject) {
+        const v = value as Record<string, unknown>;
+        const allowedKeys = new Set(['name', 'size', 'type', 'url', 'storagePath']);
+        const result: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(v)) {
+          if (!allowedKeys.has(k)) continue;
+          if (typeof val === 'string') result[k] = sanitizeInput(val);
+          else if (typeof val === 'number') result[k] = val;
+          else if (val === null || val === undefined) result[k] = val;
+        }
+        // Se pelo menos 'name' existir, manter; caso contrário, descartar
+        if (typeof result.name === 'string' && result.name.trim() !== '') {
+          sanitized[key] = result;
+        } else {
+          sanitized[key] = null;
+        }
+      } else {
+        sanitized[key] = null;
+      }
     }
   }
   
