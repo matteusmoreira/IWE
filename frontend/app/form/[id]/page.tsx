@@ -66,7 +66,7 @@ export default function PublicFormPage() {
       });
       const paymentData = await paymentResponse.json();
       if (paymentResponse.ok && paymentData.init_point) {
-        window.open(paymentData.init_point, '_blank');
+        window.location.href = paymentData.init_point;
         setWaitingPayment(true);
         pollPaymentStatus(String(submissionId));
       } else {
@@ -455,15 +455,14 @@ export default function PublicFormPage() {
     }
 
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('fieldName', fieldName);
-      fd.append('tenantId', tenantId);
-
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok || !data?.success || !data?.file) {
-        const msg = data?.error || 'Falha no upload. Salvamos apenas os metadados localmente.';
+      const signedRes = await fetch('/api/public/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fieldName, tenantId, fileName: file.name, fileType: file.type }),
+      });
+      const signedData = await signedRes.json();
+      if (!signedRes.ok || !signedData?.uploadUrl || !signedData?.storagePath) {
+        const msg = signedData?.error || 'Falha ao preparar upload. Salvamos apenas os metadados localmente.';
         toast.error(msg);
         handleFieldChange(fieldName, {
           name: file.name,
@@ -473,13 +472,36 @@ export default function PublicFormPage() {
         return;
       }
 
-      // Persistir metadados + URL/storagePath
+      const putRes = await fetch(signedData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!putRes.ok) {
+        toast.error('Falha ao enviar arquivo. Metadados foram mantidos localmente.');
+        handleFieldChange(fieldName, {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        });
+        return;
+      }
+
+      let fileUrl: string | undefined;
+      try {
+        const viewRes = await fetch(`/api/public/upload/signed-url?path=${encodeURIComponent(signedData.storagePath)}&format=json`);
+        const viewJson = await viewRes.json();
+        if (viewRes.ok && viewJson?.signedUrl) {
+          fileUrl = viewJson.signedUrl;
+        }
+      } catch {}
+
       handleFieldChange(fieldName, {
-        name: data.file.name || file.name,
-        size: data.file.size ?? file.size,
-        type: data.file.type || file.type,
-        url: data.file.url,
-        storagePath: data.file.storagePath,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: fileUrl,
+        storagePath: signedData.storagePath,
       });
       toast.success('Arquivo enviado com sucesso.');
     } catch (err) {
